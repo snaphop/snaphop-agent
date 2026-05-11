@@ -1,145 +1,793 @@
 # AGENTS.md
 
-> **Canonical instruction file for AI coding agents working in this repo.**
-> Follows the [AGENTS.md](https://agents.md) convention adopted by OpenAI
-> Codex, Claude Code (as a fallback to `CLAUDE.md`), GitHub Copilot, Cursor,
-> Windsurf, OpenCode, Aider, Sourcegraph Amp, and others.
->
-> Tool-specific files (`CLAUDE.md`, `GEMINI.md`, `.cursor/rules/`,
-> `.windsurf/rules/`, `.github/copilot-instructions.md`) are configured to
-> defer to this file. **If anything conflicts, this file wins.** Update here
-> and the rules propagate everywhere.
+## Project brief
+
+Build a fast, headless, local-first AI agent in modern C++ inspired by OpenClaw’s gateway/session/tool-loop architecture, but intentionally smaller and framework-free for the initial release.
+
+The first release is **not** a messaging-platform gateway. It is a headless agent runtime that can be driven from a terminal, JSONL stdin/stdout, or a minimal local IPC boundary. Focus on:
+
+1. **Speed**: low startup overhead, low per-turn latency, bounded allocations, efficient transcript loading.
+2. **Memory management**: predictable ownership, bounded context, compact transcripts, safe workspace access.
+3. **Tool calling**: typed tool discovery, validation, execution, event streaming, policy checks, and replayable transcripts.
+
+Do not build GUI, browser dashboard, Discord/Slack/Telegram integrations, plugin marketplace, remote multi-user auth, vector DB memory, or complex distributed execution in the initial release.
 
 ---
 
-## 1. Project overview
+## North star architecture
 
-<!-- TODO: replace this section -->
-- **Name:** my-project
-- **What it does:** one-sentence description.
-- **Primary language / runtime:** e.g. TypeScript on Node 20, Python 3.12, Go 1.22.
-- **Key dependencies / frameworks:** e.g. Next.js, FastAPI, gRPC.
-- **Deployment target:** e.g. AWS Lambda, Cloudflare Workers, Docker on Fly.io.
+Use a compact hub-and-spoke design:
 
-## 2. Repository layout
-
+```text
+                 +----------------------+
+stdin / IPC ---> | AgentRuntime / Hub   | ---> stdout events
+                 +----------+-----------+
+                            |
+          +-----------------+-----------------+
+          |                 |                 |
+     SessionStore       ModelClient       ToolRegistry
+          |                 |                 |
+     Transcript        Provider API       Built-in tools
+     Compaction        Streaming          Shell / FS / HTTP
 ```
+
+### Core components
+
+- **AgentRuntime**: owns the turn lifecycle. It receives a user message, resolves a session, builds prompt context, calls the model, dispatches tool calls, persists events, and emits final output.
+- **SessionManager**: maps session ids to workspace paths, transcript files, locks, and runtime state.
+- **TranscriptStore**: append-only JSONL event log. It must support fast append, partial recovery, and bounded replay.
+- **PromptBuilder**: builds model input from system prompt, recent transcript, memory summary, tool definitions, and user message.
+- **ModelClient**: provider-agnostic interface for chat/completion APIs. The initial implementation may use a single HTTP provider adapter, but keep the interface clean.
+- **ToolRegistry**: typed registry of callable tools. Provides tool definitions to the model and executes approved calls.
+- **ToolPolicy**: allowlist/denylist, workspace-boundary checks, timeout limits, and confirmation policy.
+- **EventBus**: emits lifecycle, assistant, tool, error, and final events as JSONL to stdout or a sink.
+- **MemoryManager**: initial version is file-backed only: summary file, transcript compaction, and optional key-value notes. Do not implement vector memory in v0.
+
+---
+
+## Language and dependency policy
+
+Use **C++20 or C++23**.
+
+Prefer standard library facilities:
+
+- `std::string_view`, `std::span`, `std::optional`, `std::variant`, `std::expected` if C++23 is available.
+- `std::filesystem` for workspace paths.
+- `std::jthread`, `std::stop_token`, `std::mutex`, `std::condition_variable` for concurrency.
+- `std::pmr` for hot-path temporary allocation and turn-scoped arenas.
+
+Avoid application frameworks.
+
+Allowed small dependencies, only when justified:
+
+- JSON parser: prefer a fast, well-maintained single-purpose library. Keep it behind `JsonValue` / `JsonParser` wrappers so it can be replaced.
+- HTTP client: keep behind `HttpClient`. `libcurl` is acceptable as an optional transport dependency.
+- TLS: do not hand-roll crypto or TLS.
+- Test framework: acceptable, but keep tests buildable from CMake with one command.
+
+Disallowed in v0:
+
+- Heavy web frameworks.
+- ORM layers.
+- Plugin frameworks.
+- Embedded scripting runtimes.
+- Vector databases.
+- Global service locators.
+- Unbounded background threads.
+- Hidden network calls outside `ModelClient` or explicit tools.
+
+---
+
+## Build system
+
+Use CMake.
+
+Required targets:
+
+```text
+agentd          # headless daemon / JSONL runtime
+agent_cli       # thin CLI wrapper for local manual testing
+agent_tests     # unit and integration tests
+```
+
+Suggested repository layout:
+
+```text
 .
-├── src/        # application source
-├── tests/      # automated tests (mirror src/ structure)
-├── scripts/    # one-off and CI helper scripts
-├── docs/       # human documentation, architecture notes, ADRs
-├── .github/    # CI, issue/PR templates, Copilot instructions
-└── AGENTS.md   # ← you are here
+├── AGENTS.md
+├── CMakeLists.txt
+├── include/
+│   └── agent/
+│       ├── agent_runtime.hpp
+│       ├── config.hpp
+│       ├── event.hpp
+│       ├── json.hpp
+│       ├── memory_manager.hpp
+│       ├── model_client.hpp
+│       ├── prompt_builder.hpp
+│       ├── session_manager.hpp
+│       ├── tool.hpp
+│       ├── tool_policy.hpp
+│       └── transcript_store.hpp
+├── src/
+│   ├── main_agentd.cpp
+│   ├── main_agent_cli.cpp
+│   ├── agent_runtime.cpp
+│   ├── config.cpp
+│   ├── event.cpp
+│   ├── json.cpp
+│   ├── memory_manager.cpp
+│   ├── model_client.cpp
+│   ├── prompt_builder.cpp
+│   ├── session_manager.cpp
+│   ├── tool.cpp
+│   ├── tool_policy.cpp
+│   └── transcript_store.cpp
+├── src/tools/
+│   ├── echo_tool.cpp
+│   ├── read_file_tool.cpp
+│   ├── write_file_tool.cpp
+│   ├── list_dir_tool.cpp
+│   └── shell_tool.cpp
+├── tests/
+│   ├── transcript_store_tests.cpp
+│   ├── session_manager_tests.cpp
+│   ├── prompt_builder_tests.cpp
+│   ├── tool_registry_tests.cpp
+│   ├── tool_policy_tests.cpp
+│   └── agent_loop_tests.cpp
+└── examples/
+    ├── config.example.json
+    └── stdin_session.example.jsonl
 ```
 
-Add new modules under `src/<domain>/`. Tests live in `tests/<domain>/` and
-mirror the source path.
+---
 
-## 3. Setup
+## Runtime mode
+
+The initial daemon communicates through newline-delimited JSON.
+
+### Input envelope
+
+```json
+{"type":"user_message","session_id":"default","message":"List files in the workspace","workspace":"./workspace"}
+```
+
+### Output events
+
+Emit one JSON object per line:
+
+```json
+{"type":"lifecycle","phase":"start","session_id":"default","turn_id":"..."}
+{"type":"assistant_delta","text":"I will inspect the workspace."}
+{"type":"tool_start","tool":"list_dir","call_id":"..."}
+{"type":"tool_end","tool":"list_dir","call_id":"...","ok":true}
+{"type":"assistant_final","text":"The workspace contains ..."}
+{"type":"lifecycle","phase":"end","session_id":"default","turn_id":"..."}
+```
+
+Every event must be serializable, replayable, and safe to persist.
+
+---
+
+## Turn lifecycle
+
+Implement the agent loop as an explicit state machine.
+
+```text
+ReceiveInput
+  -> ValidateInput
+  -> ResolveSession
+  -> AcquireSessionLock
+  -> AppendUserMessage
+  -> BuildPrompt
+  -> CallModel
+  -> HandleAssistantText
+  -> HandleToolCalls
+  -> AppendToolResults
+  -> ContinueOrFinish
+  -> AppendAssistantFinal
+  -> ReleaseSessionLock
+```
+
+Rules:
+
+- Only one turn may run per session at a time.
+- A global concurrency limit may cap simultaneous sessions.
+- Every turn gets a unique `turn_id`.
+- Every model tool call gets a unique `call_id`.
+- Always persist user messages, tool calls, tool results, assistant final text, and errors.
+- Partial assistant deltas may be emitted, but do not need to be persisted individually unless configured.
+- The loop must support cancellation via `std::stop_token`.
+
+---
+
+## Transcript format
+
+Use JSONL append-only logs.
+
+Required event types:
+
+```text
+user_message
+assistant_message
+tool_call
+tool_result
+system_note
+compaction_summary
+error
+```
+
+Example:
+
+```json
+{"ts":"2026-01-01T00:00:00Z","type":"user_message","turn_id":"t1","text":"hello"}
+{"ts":"2026-01-01T00:00:01Z","type":"assistant_message","turn_id":"t1","text":"Hi."}
+```
+
+Implementation requirements:
+
+- Append must be atomic enough to avoid interleaved writes within a process.
+- On startup, tolerate a truncated final line.
+- Never load unbounded transcript history into memory.
+- Provide `load_recent(session, budget)` using byte and approximate-token budgets.
+- Provide `append(session, event)` with explicit error handling.
+- Provide `compact(session)` that writes a summary and retains recent events.
+- Use temp files and atomic rename for compaction.
+
+---
+
+## Memory management requirements
+
+The project must be careful with allocations and object lifetimes.
+
+### Ownership
+
+- Use values and RAII wherever possible.
+- Use `std::unique_ptr` for polymorphic ownership.
+- Avoid shared ownership. `std::shared_ptr` requires a written justification in code review.
+- No raw owning pointers.
+- No global mutable state except immutable configuration after startup.
+
+### Hot path allocation
+
+For each turn:
+
+- Create a turn-scoped `std::pmr::monotonic_buffer_resource`.
+- Store temporary prompt fragments, parsed model response structures, and tool-call scratch buffers in that arena where practical.
+- Do not return `string_view` or `span` into the arena beyond the turn.
+- Do not store references to transcript buffers after compaction or reload.
+
+### Bounds
+
+Set default limits in config:
+
+```json
+{
+  "limits": {
+    "max_prompt_bytes": 262144,
+    "max_tool_result_bytes": 65536,
+    "max_shell_output_bytes": 65536,
+    "max_turn_seconds": 300,
+    "max_tool_seconds": 30,
+    "max_concurrent_sessions": 4
+  }
+}
+```
+
+All limits must be enforced.
+
+---
+
+## Tool calling design
+
+### Tool interface
+
+Implement tools behind a small interface:
+
+```cpp
+struct ToolParam {
+    std::string name;
+    std::string type;
+    bool required;
+    std::string description;
+};
+
+struct ToolDefinition {
+    std::string name;
+    std::string description;
+    std::vector<ToolParam> params;
+    bool dangerous = false;
+};
+
+struct ToolCall {
+    std::string call_id;
+    std::string name;
+    JsonValue arguments;
+};
+
+struct ToolResult {
+    std::string call_id;
+    bool ok;
+    JsonValue content;
+    std::string error;
+};
+
+class ITool {
+public:
+    virtual ~ITool() = default;
+    virtual ToolDefinition definition() const = 0;
+    virtual ToolResult call(const ToolCall& call, const ToolContext& ctx) = 0;
+};
+```
+
+The exact JSON abstraction may differ, but preserve the separation between:
+
+- tool definition,
+- model-requested tool call,
+- validated execution context,
+- result returned to the model.
+
+### Built-in v0 tools
+
+Implement only these tools initially:
+
+1. `echo`: test utility.
+2. `list_dir`: lists workspace-relative directory entries.
+3. `read_file`: reads a workspace-relative UTF-8 text file.
+4. `write_file`: writes a workspace-relative file, requiring explicit policy approval if overwriting.
+5. `shell`: executes a command in the workspace with timeout and output limits. Disabled by default.
+
+### Validation
+
+Every tool call must pass:
+
+1. Tool exists.
+2. Arguments parse as JSON object.
+3. Required parameters are present.
+4. Parameter types match the definition.
+5. Tool is allowed by policy.
+6. Workspace paths are normalized and remain inside the workspace.
+7. Tool-specific limits are enforced.
+8. Dangerous tools are blocked unless explicitly enabled.
+
+Do not execute unknown tools. Do not auto-correct dangerous tool names.
+
+### Tool policy
+
+Config example:
+
+```json
+{
+  "tools": {
+    "allow": ["echo", "list_dir", "read_file", "write_file"],
+    "deny": ["shell"],
+    "dangerous_requires_flag": true
+  }
+}
+```
+
+Policy order:
+
+1. Explicit deny wins.
+2. Unknown tool is denied.
+3. Dangerous tools require both allowlist entry and explicit dangerous flag.
+4. Workspace guard applies even if the tool is allowed.
+
+### Shell tool
+
+The shell tool is useful but risky.
+
+Requirements:
+
+- Disabled by default.
+- No shell interpolation by default. Prefer exec-style argv arrays.
+- Working directory must be the session workspace.
+- Limit stdout and stderr bytes.
+- Kill process group on timeout.
+- Return exit code, truncated stdout, truncated stderr, and timeout flag.
+- Never pass secrets into output logs.
+
+---
+
+## Workspace and path safety
+
+All file tools accept workspace-relative paths.
+
+Path rules:
+
+- Reject absolute paths from model/tool arguments.
+- Normalize `.` and `..`.
+- Resolve symlinks where possible before final access.
+- Reject paths that escape the workspace.
+- Reject paths with embedded NUL.
+- Treat the workspace as the only permitted file boundary for v0.
+
+Create a `WorkspacePath` helper so this logic is centralized and tested.
+
+---
+
+## Model client
+
+Do not hard-code a single provider throughout the runtime.
+
+Use an interface like:
+
+```cpp
+class IModelClient {
+public:
+    virtual ~IModelClient() = default;
+    virtual ModelResponse complete(const ModelRequest& request, std::stop_token stop) = 0;
+};
+```
+
+`ModelRequest` should contain:
+
+- system instructions,
+- recent transcript messages,
+- available tool definitions,
+- model name,
+- temperature or deterministic mode,
+- max output limits.
+
+`ModelResponse` should contain:
+
+- assistant text deltas or final text,
+- zero or more tool calls,
+- finish reason,
+- usage metadata if available,
+- raw provider id/status for debugging.
+
+The initial provider adapter may be simple, but the core loop must not know provider-specific JSON shapes beyond the adapter.
+
+---
+
+## Prompt policy
+
+The agent should be direct and tool-oriented.
+
+System prompt goals:
+
+- Explain available tools.
+- Tell the model to use tools only when needed.
+- Require workspace-relative paths.
+- Require brief final answers.
+- Forbid revealing secrets from environment/config.
+- Instruct the model to return structured tool calls when it needs action.
+
+Prompt builder requirements:
+
+- Keep a stable base prompt.
+- Inject compact tool definitions.
+- Inject memory summary if present.
+- Inject recent transcript within a byte/token budget.
+- Never inject entire large files automatically.
+- Log prompt byte size and estimated token count.
+
+---
+
+## Compaction v0
+
+Implement transcript compaction without vector memory.
+
+Trigger compaction when:
+
+- transcript exceeds configured byte size,
+- prompt budget cannot include enough recent context,
+- or user invokes a compact command.
+
+Compaction output:
+
+```json
+{
+  "type": "compaction_summary",
+  "summary": "The user is building a C++ headless AI agent. Key decisions: ...",
+  "covered_until_event": 1234
+}
+```
+
+The first implementation may ask the model to summarize. If no model is configured, use a deterministic fallback summary that preserves session metadata and recent user goals.
+
+---
+
+## Configuration
+
+Config file: `agent.json`.
+
+Environment variables may override sensitive values.
+
+Example:
+
+```json
+{
+  "runtime": {
+    "data_dir": ".agent",
+    "default_workspace": "workspace",
+    "jsonl_stdio": true
+  },
+  "model": {
+    "provider": "generic_http",
+    "model": "configured-model-name",
+    "api_key_env": "AGENT_API_KEY",
+    "endpoint_env": "AGENT_ENDPOINT"
+  },
+  "limits": {
+    "max_prompt_bytes": 262144,
+    "max_tool_result_bytes": 65536,
+    "max_shell_output_bytes": 65536,
+    "max_turn_seconds": 300,
+    "max_tool_seconds": 30,
+    "max_concurrent_sessions": 4
+  },
+  "tools": {
+    "allow": ["echo", "list_dir", "read_file", "write_file"],
+    "deny": ["shell"],
+    "enable_dangerous": false
+  }
+}
+```
+
+Never write API keys into transcripts, logs, crash reports, or test snapshots.
+
+---
+
+## Error handling
+
+Use explicit error types.
+
+Preferred pattern:
+
+```cpp
+Result<T, AgentError>
+```
+
+or `std::expected<T, AgentError>` if the chosen standard library supports it.
+
+Every error should include:
+
+- stable error code,
+- human-readable message,
+- optional underlying detail,
+- whether it is retryable,
+- safe-to-show flag.
+
+Do not throw exceptions across module boundaries unless the whole project standardizes on exceptions. If exceptions are enabled internally, catch them at runtime boundaries and convert to `AgentError`.
+
+---
+
+## Logging and observability
+
+Emit structured logs.
+
+Required fields:
+
+- timestamp,
+- level,
+- session_id if available,
+- turn_id if available,
+- component,
+- message,
+- safe metadata.
+
+Do not log:
+
+- API keys,
+- authorization headers,
+- full prompts by default,
+- full tool outputs by default,
+- environment variables.
+
+Provide a debug mode that writes redacted prompt/tool traces to `.agent/debug/`.
+
+---
+
+## Testing requirements
+
+Do not consider a feature complete without tests.
+
+Minimum tests:
+
+- Transcript append/load/recover truncated final line.
+- Prompt builder respects byte budget.
+- Tool registry rejects unknown tools.
+- Tool policy deny wins over allow.
+- Workspace path guard rejects `../`, absolute paths, symlink escapes, and NUL.
+- `read_file` and `write_file` operate only inside workspace.
+- Shell tool times out and truncates output.
+- Session lock serializes simultaneous turns for same session.
+- Compaction writes summary using temp file and atomic rename.
+- Agent loop can perform a mock model response with one tool call and final answer.
+
+Use mock `IModelClient` for agent loop tests.
+
+---
+
+## Performance targets for v0
+
+Measure these with a simple benchmark or integration test:
+
+- Cold start under 100 ms where practical, excluding dynamic library and network overhead.
+- Append transcript event under 1 ms for normal local disk.
+- Load recent context without scanning more than configured max bytes when possible.
+- Execute no-tool mock turn under 10 ms excluding model call.
+- Keep resident memory stable across 1,000 mock turns in one session.
+- No unbounded growth in tool registry, prompt builder, or event buffers.
+
+These are targets, not hard blockers, but regressions should be visible.
+
+---
+
+## Security baseline
+
+This is a local tool-using agent. Treat model output as untrusted input.
+
+Required safeguards:
+
+- Validate every model-generated tool call.
+- Default-deny dangerous tools.
+- Enforce workspace path boundaries.
+- Enforce command timeouts and output limits.
+- Redact secrets from logs and tool results.
+- Avoid network-capable tools in v0 except the model provider adapter.
+- Make destructive actions explicit and configurable.
+- Do not persist hidden/system secrets in transcripts.
+
+---
+
+## CLI behavior
+
+`agent_cli` should support:
 
 ```bash
-# 1. Clone and enter
-git clone <repo> && cd <repo>
-
-# 2. Install dependencies   ← TODO: replace with the right command
-# npm install
-# pnpm install
-# uv sync
-# poetry install
-# go mod download
-# cargo build
-
-# 3. Copy env template
-cp .env.example .env
+agent_cli --config agent.json --session default --workspace ./workspace "summarize README.md"
 ```
 
-## 4. Common commands
+It should print final assistant output to stdout and diagnostic logs to stderr.
 
-Agents should prefer these scripts over invoking tools directly, so behavior
-stays consistent across local dev, CI, and agent runs.
+`agentd` should support JSONL stdin/stdout mode:
 
-| Task          | Command                          |
-|---------------|----------------------------------|
-| Build         | `<TODO: build cmd>`              |
-| Run (dev)     | `<TODO: dev cmd>`                |
-| Run (prod)    | `<TODO: start cmd>`              |
-| Test (all)    | `<TODO: test cmd>`               |
-| Test (single) | `<TODO: e.g. pytest path::name>` |
-| Lint          | `<TODO: lint cmd>`               |
-| Format        | `<TODO: format cmd>`             |
-| Typecheck     | `<TODO: typecheck cmd>`          |
+```bash
+printf '%s\n' '{"type":"user_message","session_id":"default","message":"hello"}' | agentd --config agent.json
+```
 
-**Always run lint, format, and typecheck before declaring a task complete.**
+---
 
-## 5. Code style
+## Implementation milestones
 
-- Keep functions small and single-purpose. Prefer pure functions; isolate I/O.
-- Match the surrounding style of any file you edit. Don't reformat unrelated
-  code.
-- Names: descriptive over clever. Avoid abbreviations except common ones
-  (`id`, `url`, `db`).
-- Comments explain **why**, not **what**. Code shows what.
-- No dead code, no commented-out blocks left behind, no `console.log` /
-  `print` debugging in committed code.
-- Errors: fail loudly at the boundary, fail fast inside. Don't swallow
-  exceptions silently.
-- Public APIs (anything exported) get docstrings / JSDoc / equivalent.
+### Milestone 1: skeleton
 
-## 6. Testing
+- CMake project.
+- Config loader.
+- JSON wrapper.
+- Event model.
+- CLI argument parsing.
+- Basic structured logging.
 
-- Write or update tests for every behavior change. A bug fix without a
-  regression test is incomplete.
-- Test names describe the behavior, not the implementation:
-  `it("rejects expired tokens")` ✓ — `it("calls verifyJwt")` ✗.
-- Use real values over mocks where practical. Mock at the network and
-  filesystem boundary, not inside your own modules.
-- Don't disable, skip, or weaken existing tests to make a change pass — fix
-  the change instead. If a test is genuinely wrong, update it deliberately
-  and explain why in the PR.
+Acceptance:
 
-## 7. Git, commits, and PRs
+- `agent_cli --help` works.
+- `agent_tests` runs.
+- Config validation errors are readable.
 
-- **Branches:** `feat/<short-desc>`, `fix/<short-desc>`, `chore/<short-desc>`,
-  `docs/<short-desc>`.
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/).
-  - `feat: add OAuth refresh-token rotation`
-  - `fix(auth): reject tokens past their nbf claim`
-  - `chore(deps): bump axios to 1.7.4`
-- **PRs** must include:
-  - What changed and why (link the issue).
-  - How it was tested (commands run, edge cases covered).
-  - Screenshots / logs for UI or behavior changes.
-- Keep PRs small and reviewable. Split refactors from feature changes.
+### Milestone 2: sessions and transcripts
 
-## 8. Security & secrets
+- Session manager.
+- Workspace creation.
+- Transcript append/load.
+- Session lock.
+- Recovery from truncated final JSONL line.
 
-- **Never** commit `.env`, credentials, API keys, or customer data. The
-  `.gitignore` excludes them — don't override it.
-- Use `.env.example` to document required variables; leave values blank or
-  use obvious placeholders (`REPLACE_ME`).
-- Validate and sanitize all external input. Treat data from network, disk,
-  and environment as untrusted.
-- Don't log secrets, tokens, full request bodies, or PII. Redact at the
-  logger boundary.
-- Report vulnerabilities per `SECURITY.md`.
+Acceptance:
 
-## 9. Things agents should NOT do without explicit approval
+- Two concurrent turns for same session serialize.
+- Recent transcript loading respects configured budget.
 
-- Force-push, rewrite history on shared branches, or delete branches.
-- Add new top-level dependencies (run a small experiment in `scripts/` or
-  flag it for review first).
-- Change the public API, the database schema, or any file under `infra/` or
-  `.github/workflows/`.
-- Disable, weaken, or skip tests, lints, type checks, or pre-commit hooks.
-- Generate large amounts of boilerplate or speculative abstraction "for
-  later." Build for what's needed now.
-- Touch `LICENSE`, `SECURITY.md`, or `CODE_OF_CONDUCT.md`.
+### Milestone 3: tools
 
-## 10. When in doubt
+- Tool interface.
+- Tool registry.
+- Tool policy.
+- Workspace path guard.
+- `echo`, `list_dir`, `read_file`, `write_file`.
+- Disabled-by-default `shell`.
 
-1. Read existing code in the same area — match its patterns.
-2. Check `docs/` and `docs/decisions/` for prior context.
-3. Ask a clarifying question rather than guessing on irreversible decisions
-   (schema, API shape, auth model).
-4. Prefer the smallest change that solves the problem.
+Acceptance:
+
+- Mock model can request `list_dir`.
+- Unsafe paths are rejected.
+- Denied tools are not executed.
+
+### Milestone 4: model loop
+
+- `IModelClient`.
+- Mock model client for tests.
+- Generic HTTP adapter behind interface.
+- Prompt builder.
+- Tool-call continuation loop.
+- JSONL event streaming.
+
+Acceptance:
+
+- Agent handles: user message -> model tool call -> tool result -> model final.
+- All key events are persisted or emitted as specified.
+
+### Milestone 5: compaction and limits
+
+- Prompt budget enforcement.
+- Transcript compaction.
+- Turn timeout.
+- Tool output truncation.
+- Debug trace redaction.
+
+Acceptance:
+
+- Large transcript compacts safely.
+- Prompt never exceeds configured byte budget.
+- Tool result size is bounded.
+
+---
+
+## Definition of done for v0
+
+The initial release is done when:
+
+- A user can run `agent_cli` against a local workspace.
+- The runtime can process JSONL user messages through `agentd`.
+- The agent can call safe file tools.
+- Tool calls are validated and policy-gated.
+- Sessions are persisted as JSONL transcripts.
+- Recent context and compaction keep prompts bounded.
+- Memory usage remains stable in long mock-turn tests.
+- Dangerous shell execution is disabled by default and guarded when enabled.
+- The codebase has tests for core safety and lifecycle behavior.
+- The project builds from a clean checkout with documented commands.
+
+---
+
+## Non-goals for v0
+
+Do not implement these unless explicitly requested after v0:
+
+- Messaging channels.
+- Plugin SDK.
+- Browser automation.
+- Vector long-term memory.
+- Multi-agent routing.
+- Web dashboard.
+- Remote administration.
+- Distributed workers.
+- Full sandboxing with containers.
+- Voice, image, or document ingestion.
+- Tool marketplace or dynamic untrusted plugins.
+
+---
+
+## Coding style
+
+- Keep headers small and explicit.
+- Prefer composition over inheritance except for narrow interfaces.
+- Keep functions short and testable.
+- Use clear names over abbreviations.
+- Treat warnings as errors in CI.
+- Format consistently with `clang-format`.
+- Run static analysis where available.
+- Keep public interfaces documented with short comments.
+- Do not introduce hidden global state.
+- Do not add dependencies without updating this file and explaining why.
+
+---
+
+## Review checklist for coding agents
+
+Before submitting code, verify:
+
+- Does it preserve bounded memory behavior?
+- Does it avoid loading unbounded transcripts?
+- Are all model-generated inputs validated?
+- Are workspace path rules centralized and tested?
+- Are tool outputs truncated/redacted?
+- Are sensitive values excluded from logs/transcripts?
+- Are errors explicit and safe to show when user-facing?
+- Are tests included or updated?
+- Does the implementation avoid frameworks and unnecessary dependencies?
+- Can the feature be exercised through CLI or JSONL mode?

@@ -1,4 +1,4 @@
-# my-project
+# snaphop-agent
 
 > One-line description of the project. <!-- TODO -->
 

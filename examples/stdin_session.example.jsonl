@@ -1,0 +1,3 @@
+{"type":"user_message","session_id":"default","message":"List the files in the workspace","workspace":"./workspace"}
+{"type":"user_message","session_id":"default","message":"Read the file hello.txt","workspace":"./workspace"}
+{"type":"user_message","session_id":"default","message":"Write a file named output.txt with the content: Hello from the agent!","workspace":"./workspace"}

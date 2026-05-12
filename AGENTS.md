@@ -14,6 +14,29 @@ Do not build GUI, browser dashboard, Discord/Slack/Telegram integrations, plugin
 
 ---
 
+## Build and test
+
+Prerequisites: `cmake` ≥ 3.20, GCC ≥ 13 or Clang ≥ 16 (C++23), `libcurl` dev headers.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+
+# Run all tests
+build/agent_tests
+
+# CLI help
+build/agent_cli --help
+
+# JSONL daemon (one turn)
+printf '%s\n' '{"type":"user_message","session_id":"s1","message":"hello"}' \
+  | AGENT_API_KEY=<key> build/agentd --config examples/config.example.json
+```
+
+FetchContent automatically downloads `nlohmann/json` (v3.11.3) and `Catch2` (v3.5.2) on first build. No other dependencies required beyond CMake and libcurl.
+
+---
+
 ## North star architecture
 
 Use a compact hub-and-spoke design:
@@ -654,76 +677,47 @@ printf '%s\n' '{"type":"user_message","session_id":"default","message":"hello"}'
 
 ## Implementation milestones
 
-### Milestone 1: skeleton
+### Milestone 1: skeleton ✓
 
 - CMake project.
 - Config loader.
-- JSON wrapper.
-- Event model.
+- JSON wrapper (nlohmann/json behind `JsonValue`/`parse_json` abstraction).
+- Event model (runtime events + transcript records).
 - CLI argument parsing.
-- Basic structured logging.
+- Basic structured JSONL logging via `emit_event()`.
 
-Acceptance:
+### Milestone 2: sessions and transcripts ✓
 
-- `agent_cli --help` works.
-- `agent_tests` runs.
-- Config validation errors are readable.
+- `SessionManager` — maps session IDs to workspace paths and `TranscriptStore`.
+- Workspace creation on first access.
+- `TranscriptStore` — append-only JSONL log with `append()`, `load_recent()`, `compact()`.
+- `SessionState::turn_mutex` serializes concurrent turns per session.
+- Recovery from truncated final JSONL line (parse errors are silently skipped).
 
-### Milestone 2: sessions and transcripts
+### Milestone 3: tools ✓
 
-- Session manager.
-- Workspace creation.
-- Transcript append/load.
-- Session lock.
-- Recovery from truncated final JSONL line.
+- `ITool` / `ToolRegistry` / `ToolPolicy` interfaces.
+- `resolve_workspace_path()` — centralized path guard; tested for `../`, absolute, symlink, NUL.
+- `echo`, `list_dir`, `read_file`, `write_file` — all workspace-confined.
+- `shell` — exec-style, timeout, output truncation; dangerous flag; disabled by default.
 
-Acceptance:
+### Milestone 4: model loop ✓
 
-- Two concurrent turns for same session serialize.
-- Recent transcript loading respects configured budget.
+- `IModelClient` interface with `DeltaCallback` streaming.
+- `AnthropicClient` — Anthropic Messages API adapter (libcurl).
+- `OpenAIClient` — OpenAI-compatible adapter (libcurl).
+- `PromptBuilder` — byte-budgeted prompt from transcript history.
+- Tool-call continuation loop in `AgentRuntime::model_iteration()` (max 16 iterations).
+- Full JSONL event streaming: lifecycle, assistant_delta, tool_start/end, assistant_final, error.
+- Mock `IModelClient` used in all agent loop tests.
 
-### Milestone 3: tools
+### Milestone 5: compaction and limits ✓
 
-- Tool interface.
-- Tool registry.
-- Tool policy.
-- Workspace path guard.
-- `echo`, `list_dir`, `read_file`, `write_file`.
-- Disabled-by-default `shell`.
-
-Acceptance:
-
-- Mock model can request `list_dir`.
-- Unsafe paths are rejected.
-- Denied tools are not executed.
-
-### Milestone 4: model loop
-
-- `IModelClient`.
-- Mock model client for tests.
-- Generic HTTP adapter behind interface.
-- Prompt builder.
-- Tool-call continuation loop.
-- JSONL event streaming.
-
-Acceptance:
-
-- Agent handles: user message -> model tool call -> tool result -> model final.
-- All key events are persisted or emitted as specified.
-
-### Milestone 5: compaction and limits
-
-- Prompt budget enforcement.
-- Transcript compaction.
-- Turn timeout.
-- Tool output truncation.
-- Debug trace redaction.
-
-Acceptance:
-
-- Large transcript compacts safely.
-- Prompt never exceeds configured byte budget.
-- Tool result size is bounded.
+- Prompt byte budget enforced in `PromptBuilder::build()`.
+- `TranscriptStore::compact()` — writes `compaction_summary`, retains recent tail, atomic rename.
+- Tool result size bounded (`max_tool_result_bytes`).
+- Shell output bounded (`max_shell_output_bytes`), per-tool timeout (`max_tool_seconds`).
+- API keys resolved from env at call time; never stored in transcripts or logs.
 
 ---
 

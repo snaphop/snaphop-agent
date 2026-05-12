@@ -19,7 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 -
 
-## [0.1.0] - YYYY-MM-DD
+## [0.1.0] - 2026-05-12
 
 ### Added
-- Initial project scaffold.
+- Full v0 implementation of the snaphop-agent runtime (all 5 milestones).
+- CMake build system with C++23, FetchContent for nlohmann/json and Catch2.
+- `AgentRuntime` — turn lifecycle hub with tool-call continuation loop (max 16 iterations).
+- `SessionManager` — session creation, workspace provisioning, per-session turn mutex.
+- `TranscriptStore` — append-only JSONL log with byte-budgeted `load_recent()`, atomic `compact()`.
+- `PromptBuilder` — byte-budgeted prompt construction from transcript history and memory summary.
+- `IModelClient` interface with `AnthropicClient` (Anthropic Messages API) and `OpenAIClient` (OpenAI-compatible) adapters via libcurl.
+- `ToolRegistry` and `ITool` interface with typed parameter validation.
+- `ToolPolicy` — allow/deny lists, dangerous-tool flag enforcement.
+- `resolve_workspace_path()` — centralized path safety: rejects absolute paths, traversal, symlinks outside workspace, and NUL bytes.
+- Built-in tools: `echo`, `list_dir`, `read_file`, `write_file`, `shell` (disabled by default).
+- `MemoryManager` — file-backed summary and key-value notes per session.
+- `agentd` — headless JSONL stdin/stdout daemon.
+- `agent_cli` — interactive CLI for manual testing.
+- 38 unit and integration tests covering all required safety and lifecycle scenarios.
+- `examples/config.example.json` and `examples/stdin_session.example.jsonl`.

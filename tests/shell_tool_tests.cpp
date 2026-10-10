@@ -91,3 +91,43 @@ TEST_CASE("ShellTool: timeout still applies after output descriptors close", "[s
     CHECK(result.content["timed_out"] == true);
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(3));
 }
+
+TEST_CASE("ShellTool: capped capture retains late diagnostics and exact short output", "[shell]") {
+    auto tool = agent::make_shell_tool();
+    agent::LimitsConfig limits;
+    limits.max_shell_output_bytes = 128;
+    agent::ToolContext ctx{.workspace = fs::temp_directory_path(), .limits = &limits};
+    agent::ToolCall call{
+        "tail",
+        "shell",
+        {{"command", "python3"},
+         {"args",
+          {"-c",
+           "import sys; sys.stdout.write('HEAD' + 'x' * 20000 + 'FATAL-END'); sys.exit(7)"}}}};
+    const auto result = tool->call(call, ctx);
+    CHECK_FALSE(result.ok);
+    CHECK(result.content["exit_code"] == 7);
+    CHECK(result.content["truncated"] == true);
+    const auto text = result.content["output"].get<std::string>();
+    CHECK(text.size() <= limits.max_shell_output_bytes);
+    CHECK(text.starts_with("HEAD"));
+    CHECK(text.ends_with("FATAL-END"));
+    CHECK(text.find("[truncated]") != std::string::npos);
+    call.arguments["args"] = {"-c", "import sys; sys.stdout.write('世界' * 400 + 'END')"};
+    const auto unicode = tool->call(call, ctx);
+    CHECK(unicode.content["output"].get<std::string>().ends_with("END"));
+    CHECK(unicode.content["output"].get<std::string>().size() <= limits.max_shell_output_bytes);
+    CHECK_NOTHROW(agent::to_json_string(unicode.content));
+    call.arguments["args"] = {"-c", "import sys; sys.stdout.write('short')"};
+    const auto short_result = tool->call(call, ctx);
+    CHECK(short_result.ok);
+    CHECK(short_result.content["output"] == "short");
+    CHECK(short_result.content["truncated"] == false);
+    call.arguments["args"] = {"-c", "import sys; sys.stdout.write('x' * 100 + 'END')"};
+    for (size_t limit : {1u, 2u, 12u, 13u, 14u, 16u, 24u, 64u}) {
+        limits.max_shell_output_bytes = limit;
+        const auto tiny = tool->call(call, ctx);
+        CHECK(tiny.content["output"].get<std::string>().size() <= limit);
+        CHECK(tiny.content["truncated"] == true);
+    }
+}

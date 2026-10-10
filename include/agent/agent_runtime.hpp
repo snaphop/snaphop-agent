@@ -8,6 +8,8 @@
 #include "prompt_builder.hpp"
 #include "memory_manager.hpp"
 #include "event.hpp"
+#include "tool_executor.hpp"
+#include "tool_loop_guard.hpp"
 #include <string>
 #include <memory>
 #include <stop_token>
@@ -68,7 +70,9 @@ class AgentRuntime {
     std::expected<bool, RuntimeError>
     model_iteration(SessionState& session, const std::string& turn_id,
                     std::pmr::vector<JsonValue>& transcript_scratch, std::string& final_text_out,
-                    int& tool_call_count, std::stop_token stop);
+                    int& tool_call_count, ModelRequest& request,
+                    const PromptBuilderOptions& options, ToolLoopGuard& loop_guard,
+                    std::stop_token stop);
 
     std::mutex active_mutex_;
     size_t active_turns_ = 0;
@@ -79,6 +83,9 @@ class AgentRuntime {
     std::unique_ptr<IModelClient> model_client_;
     std::unique_ptr<ToolRegistry> tools_;
     std::unique_ptr<ToolPolicy> policy_;
+    std::vector<ToolDefinition> allowed_tools_;
+    JsonValue allowed_tool_schemas_ = JsonValue::array();
+    ToolExecutor tool_executor_;
 };
 
 // Build a default runtime from config (registers built-in tools, resolves env vars).

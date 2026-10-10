@@ -1,5 +1,7 @@
 #include "agent/tool.hpp"
 #include "agent/config.hpp"
+#include "agent/tool_result_budget.hpp"
+#include <algorithm>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
@@ -13,6 +15,69 @@
 #include <cerrno>
 
 namespace agent {
+
+namespace {
+
+// Keep early context and late diagnostics with constant storage, even for a
+// command that keeps writing after the output cap has been reached.
+class OutputCapture {
+  public:
+    explicit OutputCapture(size_t limit)
+        : limit_(limit), head_limit_(limit - limit / 4), tail_(limit / 4, '\0') {}
+
+    void append(std::string_view bytes) {
+        if (bytes.size() > limit_ - std::min(total_, limit_))
+            truncated_ = true;
+        total_ = std::min(limit_, total_ + std::min(bytes.size(), limit_));
+        const size_t take = std::min(bytes.size(), head_limit_ - head_.size());
+        head_.append(bytes.substr(0, take));
+        bytes.remove_prefix(take);
+        if (tail_.empty() || bytes.empty())
+            return;
+        if (bytes.size() >= tail_.size()) {
+            std::copy(bytes.end() - static_cast<std::ptrdiff_t>(tail_.size()), bytes.end(),
+                      tail_.begin());
+            cursor_ = 0;
+            tail_size_ = tail_.size();
+        } else {
+            const size_t first = std::min(bytes.size(), tail_.size() - cursor_);
+            std::copy_n(bytes.begin(), first, tail_.begin() + static_cast<std::ptrdiff_t>(cursor_));
+            std::copy(bytes.begin() + static_cast<std::ptrdiff_t>(first), bytes.end(),
+                      tail_.begin());
+            cursor_ = (cursor_ + bytes.size()) % tail_.size();
+            tail_size_ = std::min(tail_.size(), tail_size_ + bytes.size());
+        }
+    }
+
+    std::string text() const {
+        const auto tail = tail_size_ < tail_.size()
+                              ? tail_.substr(0, tail_size_)
+                              : tail_.substr(cursor_) + tail_.substr(0, cursor_);
+        constexpr std::string_view marker = "\n[truncated]\n";
+        if (!truncated_)
+            return head_ + tail;
+        if (limit_ < marker.size())
+            return utf8_prefix(head_ + tail, limit_);
+        const size_t available = limit_ - marker.size();
+        size_t start = tail.size() - std::min(tail.size(), available);
+        while (start < tail.size() && (static_cast<unsigned char>(tail[start]) & 0xc0) == 0x80)
+            ++start;
+        const auto safe_tail = tail.substr(start);
+        return utf8_prefix(head_, available - safe_tail.size()) + std::string(marker) + safe_tail;
+    }
+
+    bool truncated() const {
+        return truncated_;
+    }
+
+  private:
+    size_t limit_, head_limit_, total_ = 0;
+    std::string head_, tail_;
+    size_t cursor_ = 0, tail_size_ = 0;
+    bool truncated_ = false;
+};
+
+} // namespace
 
 // Exec-style command runner; arguments are passed directly to execvp.
 class ShellTool : public ITool {
@@ -31,11 +96,13 @@ class ShellTool : public ITool {
                     {.name = "args",
                      .type = "array",
                      .required = false,
-                     .description = "Additional arguments (preferred over embedding in command)"},
+                     .description = "Additional arguments (preferred over embedding in command)",
+                     .item_type = "string"},
                     {.name = "timeout_seconds",
                      .type = "integer",
                      .required = false,
-                     .description = "Per-call timeout override (capped by global limit)"},
+                     .description = "Per-call timeout override (capped by global limit)",
+                     .minimum = 1},
                 },
             .dangerous = true,
         };
@@ -126,8 +193,7 @@ class ShellTool : public ITool {
         // Parent: read output with timeout.
         close(pipefd[1]);
 
-        std::string output;
-        bool truncated = false;
+        OutputCapture output(max_output);
         bool timed_out = false;
 
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(max_secs);
@@ -158,15 +224,7 @@ class ShellTool : public ITool {
                 ssize_t n = read(pipefd[0], buf, sizeof(buf));
                 if (n <= 0)
                     break;
-                size_t remaining = max_output - output.size();
-                if (remaining == 0) {
-                    truncated = true;
-                    continue;
-                }
-                size_t take = std::min(static_cast<size_t>(n), remaining);
-                output.append(buf, take);
-                if (take < static_cast<size_t>(n))
-                    truncated = true;
+                output.append(std::string_view(buf, static_cast<size_t>(n)));
             }
             if (!(pfd.revents & POLLIN) && (pfd.revents & (POLLHUP | POLLERR)))
                 break;
@@ -189,9 +247,9 @@ class ShellTool : public ITool {
         int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 
         JsonValue result;
-        result["output"] = output;
+        result["output"] = output.text();
         result["exit_code"] = exit_code;
-        result["truncated"] = truncated;
+        result["truncated"] = output.truncated();
         result["timed_out"] = timed_out;
 
         bool ok = (exit_code == 0 && !timed_out);

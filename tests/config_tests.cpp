@@ -10,3 +10,11 @@ TEST_CASE("Config: rejects invalid limits", "[config]") {
     CHECK(agent::parse_config(R"({"limits":{"max_turn_seconds":1}})"));
     CHECK(agent::parse_config("{}"));
 }
+
+TEST_CASE("Config: parallel tool workers are explicitly bounded", "[config]") {
+    CHECK(agent::parse_config(R"({"limits":{"max_parallel_tools":1}})"));
+    CHECK(agent::parse_config(R"({"limits":{"max_parallel_tools":32}})"));
+    for (const auto* value : {"0", "-1", "33", "1.5"})
+        CHECK_FALSE(agent::parse_config(std::string("{\"limits\":{\"max_parallel_tools\":") +
+                                        value + "}}"));
+}

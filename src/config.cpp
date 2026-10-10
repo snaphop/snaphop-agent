@@ -43,6 +43,7 @@ static void parse_limits(const JsonValue& obj, LimitsConfig& out) {
     get_u32("max_tool_seconds", out.max_tool_seconds);
     get_u32("max_concurrent_sessions", out.max_concurrent_sessions);
     get_u32("max_cached_sessions", out.max_cached_sessions);
+    get_u32("max_parallel_tools", out.max_parallel_tools);
 }
 
 static void parse_tools(const JsonValue& obj, ToolsConfig& out) {
@@ -81,7 +82,7 @@ std::expected<Config, std::string> parse_config(std::string_view json_text) {
         for (const auto* name :
              {"max_prompt_bytes", "max_transcript_bytes", "max_tool_result_bytes",
               "max_shell_output_bytes", "max_turn_seconds", "max_tool_seconds",
-              "max_concurrent_sessions", "max_cached_sessions"}) {
+              "max_concurrent_sessions", "max_cached_sessions", "max_parallel_tools"}) {
             const auto& limits = root["limits"];
             if (!limits.contains(name))
                 continue;
@@ -102,6 +103,8 @@ std::expected<Config, std::string> parse_config(std::string_view json_text) {
         parse_limits(root["limits"], cfg.limits);
     if (root.contains("tools") && root["tools"].is_object())
         parse_tools(root["tools"], cfg.tools);
+    if (cfg.limits.max_parallel_tools > 32)
+        return std::unexpected("max_parallel_tools must be between 1 and 32");
     return cfg;
 }
 

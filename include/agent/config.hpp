@@ -31,6 +31,7 @@ struct LimitsConfig {
     uint32_t max_tool_seconds = 30;
     uint32_t max_concurrent_sessions = 4;
     uint32_t max_cached_sessions = 64;
+    uint32_t max_parallel_tools = 4;
 };
 
 struct ToolsConfig {

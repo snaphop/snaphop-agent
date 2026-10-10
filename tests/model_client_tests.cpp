@@ -45,3 +45,28 @@ TEST_CASE("Model clients: missing model is an explicit error without network", "
     auto anthropic = agent::make_anthropic_client();
     CHECK(anthropic->complete(req, {}).finish_reason == agent::FinishReason::Error);
 }
+
+TEST_CASE("Provider adapters project identical canonical schemas with declared element types",
+          "[model]") {
+    agent::ModelRequest req;
+    req.tools = {{.name = "typed",
+                  .description = "Typed",
+                  .params = {{.name = "numbers",
+                              .type = "array",
+                              .required = true,
+                              .description = "Integers",
+                              .item_type = "integer"},
+                             {.name = "limit",
+                              .type = "integer",
+                              .required = false,
+                              .description = "Positive",
+                              .minimum = 1}}}};
+    req.tool_schemas.push_back(agent::tool_input_schema(req.tools[0]));
+    auto openai = agent::openai_request_body(req);
+    auto anthropic = agent::anthropic_request_body(req);
+    const auto& schema = openai["tools"][0]["function"]["parameters"];
+    CHECK(schema == anthropic["tools"][0]["input_schema"]);
+    CHECK(schema["properties"]["numbers"]["items"]["type"] == "integer");
+    CHECK(schema["properties"]["limit"]["minimum"] == 1);
+    CHECK(schema["additionalProperties"] == false);
+}

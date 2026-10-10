@@ -299,7 +299,8 @@ Set default limits in config:
     "max_shell_output_bytes": 65536,
     "max_turn_seconds": 300,
     "max_tool_seconds": 30,
-    "max_concurrent_sessions": 4
+    "max_concurrent_sessions": 4,
+    "max_parallel_tools": 4
   }
 }
 ```
@@ -546,7 +547,8 @@ Example:
     "max_shell_output_bytes": 65536,
     "max_turn_seconds": 300,
     "max_tool_seconds": 30,
-    "max_concurrent_sessions": 4
+    "max_concurrent_sessions": 4,
+    "max_parallel_tools": 4
   },
   "tools": {
     "allow": ["echo", "list_dir", "read_file", "write_file"],

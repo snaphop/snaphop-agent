@@ -18,9 +18,15 @@ CLI / JSONL stdin -> AgentRuntime -> JSONL events / final CLI output
 `AgentRuntime` validates input, resolves a session, waits for its turn lock and
 an execution slot, persists the user message, builds context, calls the model,
 validates and dispatches tools, and persists the final answer. A maximum of 16
-model iterations and 32 calls per response bounds the continuation loop.
+model iterations, 32 calls per response, and 128 calls per turn bounds the
+continuation loop. A bounded progress guard warns and stops stalled repetition.
 Cancellation and the turn deadline propagate through `std::stop_token` to the
-provider transport and shell runner. Local file operations are synchronous.
+provider transport, tool workers, and shell runner. Individual file operations
+are synchronous; independent read-only calls can share a bounded worker pool.
+Mixed batches with writes or shell commands execute sequentially. Only the
+turn thread emits events and persists results, in model call order. Worker
+threads start lazily and are joined by runtime ownership; all submitted work
+settles before turn-local state is destroyed.
 
 Sessions own their workspace, transcript store, and turn mutex. Runtime-wide
 execution slots enforce `max_concurrent_sessions`; a separate
@@ -38,9 +44,14 @@ byte bound. Rename provides atomic visibility, without an fsync durability
 promise.
 
 Prompt replay retains native assistant calls and their associated tool results.
-Incomplete exchanges become an interruption note. Older turns are removed as
-whole groups. The budget includes the serialized provider request, including
-schemas and escaping; a current turn that cannot fit returns an error. A
+Completed effects survive interrupted exchanges; missing results become explicit
+unknown-outcome errors and are never executed during replay. Displaced results
+are paired and duplicates/orphans are removed only from the model view. Older
+turns are removed as whole groups. The budget includes the serialized provider
+request, including schemas and escaping. Under pressure, older tool payloads can shrink while
+keeping pairing and persisted evidence. A current turn that still cannot fit
+returns an error. Stable context and cached canonical schemas are prepared once
+per turn, and messages extend incrementally after tool results. A
 turn-scoped PMR arena owns the temporary event vector; JSON values and model
 messages still use ordinary bounded allocations.
 
@@ -51,12 +62,18 @@ exercises both adapters end to end. HTTP responses are limited to 1 MiB by
 default and use cancellable libcurl transfers. These adapters buffer responses
 and emit text chunks after receipt; they do not implement SSE streaming yet.
 
-Tools validate required and optional parameter types. File paths are resolved
-centrally, including existing symlink parents of new files. Overwrites require
+Tools cache definitions at registration. Frozen registries prepare immutable
+validated calls; canonical schemas include parameter types, array element types,
+numeric bounds, and rejection of unknown arguments. Providers project the same
+schemas into their native request shape. Paginated file reads reserve serialized
+metadata/escaping costs and return UTF-8-safe continuation offsets. Tool outputs
+retain useful text and metadata within their content budget. File paths are
+resolved centrally, including existing symlink parents of new files. Overwrites require
 both the model's `overwrite` argument and operator policy. Shell is disabled by
 default and requires the dangerous-tool flag plus policy approval. Enabled
 commands receive explicit argv, a workspace working directory, bounded output,
-and process-group cancellation. Shell is not a filesystem sandbox.
+and process-group cancellation. Shell capture retains a bounded head and tail
+for late diagnostics. Shell is not a filesystem sandbox.
 
 Configured provider credentials are redacted from runtime text and persisted
 tool values. This is exact-value redaction, not detection of arbitrary secrets

@@ -153,3 +153,57 @@ cmake --build build-runtime --parallel
 ## License
 
 [MIT](./LICENSE)
+
+## Bounded tool output
+
+`read_file` accepts optional `offset` (zero-based byte offset, default `0`) and
+`limit` (positive source-byte count, capped by `max_tool_result_bytes`). Offsets
+must fall on UTF-8 code point boundaries. Results include `content`, `path`,
+`offset`, `next_offset`, and `truncated`. When `truncated` is true, pass
+`next_offset` as the next call's `offset`; continue until `truncated` is false.
+For example: `{"path":"README.md","offset":0,"limit":4096}`.
+
+The serialized result content, including JSON escaping and pagination metadata,
+fits `max_tool_result_bytes`. A budget too small for metadata or one code point
+returns an explicit error. Files must remain unchanged while paging; byte offsets
+are not snapshots. Invalid UTF-8 pages are rejected.
+
+Oversized tool output retains useful text and structured metadata where possible;
+command output retains a diagnostic tail. During prompt pressure, older tool
+payloads can be shortened in the model view while preserving call/result pairing
+and persisted evidence. The latest result is retained whole when it fits. Calls,
+system instructions, or user input that still cannot fit cause a budget error.
+
+## Tool execution and recovery
+
+The tool registry caches definitions at registration and is frozen when the
+runtime takes ownership. One canonical schema drives input validation and both
+provider adapters, including array element types, numeric bounds, and rejection
+of unknown arguments. Tool descriptions live in native schemas; the system
+prompt includes only their names. Schemas, tool ordering, and memory context stay
+stable during a turn, and model messages are extended after each tool batch.
+
+A batch containing only validated, policy-approved read-only calls can execute
+concurrently. The runtime shares a lazy worker pool capped by
+`limits.max_parallel_tools` (default `4`, range `1`–`32`) and a 32-job queue.
+Set the limit to `1` to execute all calls sequentially. Batches containing writes,
+shell calls, or rejected calls run sequentially. Events and persisted results
+remain in model call order, and active work settles before turn state is freed.
+Read-only status is an explicit thread-safety contract; arbitrary tools default
+to sequential execution. Parallel reads do not provide a filesystem snapshot.
+
+A turn-local 32-record progress guard warns after three unchanged observations
+of the same action and stops continued repetition at five. Changed observations,
+new actions, and successful mutations count as possible progress. Repeated
+errors and alternating stalled actions are covered. The runtime also enforces
+128 total calls per turn, 32 calls per response, and 16 model iterations.
+Duplicate call IDs within one response reject the batch before execution;
+provider IDs may repeat in later assistant batches. Every execution receives a
+unique local `call_id`; transcripts retain the separate `provider_call_id` for
+wire replay. Older logs without that field continue to replay.
+
+Interrupted transcript replay retains completed tool results and supplies an
+explicit unknown-outcome error for missing results. Displaced results are paired
+with their assistant calls and duplicates/orphans are removed from the model
+view. Recovery never reruns tools; inspect state before retrying a mutation with
+an unknown outcome. Replay repairs and prompt trimming leave the log intact.

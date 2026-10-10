@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Enhancements"
+  short_description: "Validate and classify repository enhancement requests"
+  default_prompt: "Use $review-enhancements to classify all open enhancements without implementing them."

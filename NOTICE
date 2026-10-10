@@ -101,3 +101,11 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Cppcheck (system-provided developer tooling; not included in runtime archives)
+https://github.com/danmar/cppcheck
+----------------------------------------------------------------------------
+Cppcheck is licensed under GPL-3.0-or-later by Daniel Marjamaki and the Cppcheck
+team. It analyzes project sources as a separate developer tool; it is not
+linked into or bundled with SnapHop Agent. Its license and component notices
+accompany the installed package (on Ubuntu, /usr/share/doc/cppcheck/copyright).

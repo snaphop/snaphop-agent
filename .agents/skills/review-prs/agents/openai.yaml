@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Pull Requests"
+  short_description: "Review and resolve all open pull requests"
+  default_prompt: "Use $review-prs to review and test all open pull requests, resolving and merging them when authorized."

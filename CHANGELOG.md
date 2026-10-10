@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Four canonical repository review skills with discovery metadata and Claude symlinks,
+  plus code-review guidance, CLI/configuration contract, local setup and a VM repository comparison.
+- Required Cppcheck static analysis in local and CI verification, with diagnostic logs.
+- Configurable concurrent builds and complete-project GCC coverage reporting with
+  regression floors; the requested 100% coverage target remains outstanding.
 - MIT license and dependency notices, GitHub verification and tag-triggered
   release workflows, grouped Actions dependency updates, and a PR template.
 - Local verification and Linux x86_64 release packaging scripts.

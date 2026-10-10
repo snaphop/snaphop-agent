@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Documentation"
+  short_description: "Audit and correct all repository documentation"
+  default_prompt: "Use $review-documentations to audit all repository documentation, correct stale claims, and run the required checks."

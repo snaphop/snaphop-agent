@@ -112,6 +112,23 @@ Local development follow-up validation:
   `CMAKE_BUILD_PARALLEL_LEVEL`, then the CPU count, rejecting invalid values.
   CI caps compilation at two jobs; tests remain sequential.
 
+Static analysis follow-up:
+
+- `scripts/check.sh` now requires Cppcheck 2.13+ and runs the same static
+  analysis gate on local verification, pull requests, pushes, and version tags.
+- `scripts/static-analysis.sh` configures a CMake compile database, then analyzes
+  all 37 configured runtime/test translation units and their project headers in
+  parallel. Errors, warnings, performance and portability findings fail checks.
+- Cppcheck 2.19 and the Ubuntu 24.04 Cppcheck 2.13 package both passed locally
+  without project findings. Dependency diagnostics alone are suppressed;
+  analyzer-only Catch2 macro definitions retain assertion expressions.
+- Eight build-script tests cover parallel job selection, analyzer invocation,
+  missing-tool handling, log retention and failure propagation. A real analyzer
+  regression checks that a deliberate null-pointer defect fails the gate.
+- Logs are saved under the build directory and uploaded by verification CI.
+  Cppcheck is system-provided developer tooling and is not bundled or linked
+  into the runtime.
+
 The original milestone checkmarks describe modules being present. They should
 not be read as proof that every v0 acceptance criterion is complete. Continue
 with these remaining items before calling the release finished.

@@ -38,6 +38,73 @@ TEST_CASE("ToolRegistry: register and find tool", "[registry]") {
     CHECK(reg.size() == 1);
 }
 
+TEST_CASE("ToolRegistry: replacement, preparation ownership and cancellation are enforced",
+          "[registry]") {
+    agent::ToolRegistry reg;
+    REQUIRE_THROWS_AS(reg.register_tool(nullptr), std::invalid_argument);
+    reg.register_tool(std::make_unique<PingTool>());
+    reg.register_tool(std::make_unique<PingTool>());
+    CHECK(reg.size() == 1);
+    agent::ToolCall call{"c", "ping", agent::JsonValue::object()};
+    CHECK_FALSE(reg.prepare(call));
+    CHECK_FALSE(reg.execute({"c", "ping", nullptr}, {}));
+    reg.freeze();
+    CHECK_FALSE(reg.prepare({"c", "unknown", agent::JsonValue::object()}));
+    auto prepared = reg.prepare(call);
+    REQUIRE(prepared);
+    CHECK(prepared->call().call_id == "c");
+    agent::ToolRegistry other;
+    CHECK_FALSE(other.execute(*prepared, {}));
+    std::stop_source stop;
+    stop.request_stop();
+    agent::ToolContext ctx{.workspace = {}, .stop = stop.get_token()};
+    CHECK_FALSE(reg.execute(call, ctx));
+    CHECK_FALSE(reg.execute(*prepared, ctx));
+}
+
+TEST_CASE("ToolRegistry: exceptions are converted for direct and prepared calls", "[registry]") {
+    class ThrowingTool : public PingTool {
+        agent::ToolResult call(const agent::ToolCall&, const agent::ToolContext&) override {
+            throw std::runtime_error("private detail");
+        }
+    };
+    agent::ToolRegistry reg;
+    reg.register_tool(std::make_unique<ThrowingTool>());
+    reg.freeze();
+    agent::ToolCall call{"c", "ping", agent::JsonValue::object()};
+    auto direct = reg.execute(call, {});
+    REQUIRE_FALSE(direct);
+    CHECK(direct.error() == "Tool execution failed");
+    auto prepared = reg.prepare(call);
+    REQUIRE(prepared);
+    auto result = reg.execute(*prepared, {});
+    REQUIRE_FALSE(result);
+    CHECK(result.error() == "Tool execution failed");
+}
+
+TEST_CASE("ToolRegistry: missing parameters and all declared JSON types are checked",
+          "[registry]") {
+    class TypedTool : public PingTool {
+      public:
+        std::string type;
+        explicit TypedTool(std::string value) : type(std::move(value)) {}
+        agent::ToolDefinition definition() const override {
+            return {.name = "ping",
+                    .description = "Typed",
+                    .params = {
+                        {.name = "value", .type = type, .required = true, .description = "Value"}}};
+        }
+    };
+    for (const auto& [type, value] : std::vector<std::pair<std::string, agent::JsonValue>>{
+             {"number", 1.5}, {"object", agent::JsonValue::object()}, {"unsupported", true}}) {
+        agent::ToolRegistry reg;
+        reg.register_tool(std::make_unique<TypedTool>(type));
+        CHECK_FALSE(reg.execute({"c", "ping", agent::JsonValue::object()}, {}));
+        auto result = reg.execute({"c", "ping", {{"value", value}}}, {});
+        CHECK(result.has_value() == (type != "unsupported"));
+    }
+}
+
 TEST_CASE("ToolRegistry: rejects unknown tools", "[registry]") {
     agent::ToolRegistry reg;
     agent::ToolCall tc{.call_id = "c1", .name = "ghost", .arguments = agent::JsonValue::object()};

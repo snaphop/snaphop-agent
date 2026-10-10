@@ -7,3 +7,7 @@ agent.json
 workspace/
 __pycache__/
 dist/
+.venv-coverage/
+*.gcda
+*.gcno
+*.gcov

@@ -34,6 +34,9 @@ git push --set-upstream origin feat/short-description
 ```
 
 GitHub Actions runs the same check on pull requests and pushes to `master`.
+It also runs `scripts/coverage.sh` with the optional tooling in
+`scripts/requirements-coverage.txt`; see the README for local setup and coverage
+thresholds. Keep uncovered paths visible in reports when expanding tests.
 Releases are published only on `vX.Y.Z` tags, after verification. Maintainers
 can build the runtime archive locally with
 `VERSION=v0.1.0 scripts/build-release.sh`; this does not publish it.

@@ -44,6 +44,15 @@ printf '%s\n' '{"type":"user_message","session_id":"s1","message":"hello"}' \
 FetchContent automatically downloads `nlohmann/json` (v3.12.0) and `Catch2` (v3.16.1) on first build. No other runtime dependencies required beyond CMake and libcurl.
 Catch2 is fetched only with `BUILD_TESTING=ON`. Python 3 is optional developer
 tooling for `scripts/check_protocol.py`, not a runtime dependency.
+Coverage reporting additionally uses optional Python developer tooling pinned in
+`scripts/requirements-coverage.txt`. Run `scripts/coverage.sh` with GCC and a
+matching gcov; it instruments all project C++ sources and headers, runs the
+regression and loopback HTTP suites, and writes reports under
+`build-coverage/coverage/`. The current regression floors are 92% lines and 80%
+branches; 100% coverage remains an acceptance gap. Override the floors with
+`COVERAGE_MIN_LINES` and `COVERAGE_MIN_BRANCHES` to enforce the full target.
+Build scripts use `BUILD_JOBS`, then `CMAKE_BUILD_PARALLEL_LEVEL`, then the local
+CPU count. Set `BUILD_JOBS=2` on memory-constrained machines (as in CI).
 
 The October 2026 maintenance findings and remaining v0 acceptance gaps are
 tracked in `docs/status.md`. Existing milestone checkmarks indicate module

@@ -21,7 +21,9 @@ static void print_usage(const char* argv0) {
         << "Reads JSON envelopes from stdin (one per line) and emits JSONL events to stdout.\n"
         << "\n"
         << "Input envelope:\n"
-        << "  {\"type\":\"user_message\",\"session_id\":\"...\",\"message\":\"...\",\"workspace\":\"...\"}\n"
+        << "  "
+           "{\"type\":\"user_message\",\"session_id\":\"...\",\"message\":\"...\",\"workspace\":\"."
+           "..\"}\n"
         << "\n"
         << "Options:\n"
         << "  --config <path>   Path to agent.json (default: agent.json)\n"
@@ -45,7 +47,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::signal(SIGINT,  handle_signal);
+    std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
     agent::Config cfg;
@@ -63,15 +65,29 @@ int main(int argc, char* argv[]) {
 
     std::string line;
     while (!g_shutdown.load(std::memory_order_relaxed) && std::getline(std::cin, line)) {
-        if (line.empty()) continue;
+        if (line.empty())
+            continue;
 
         auto parsed = agent::parse_json(line);
         if (!parsed) {
-            agent::emit_event(agent::make_error_event("Invalid JSON: " + parsed.error().message));
+            agent::emit_event(agent::make_error_event("Invalid JSON input"));
             continue;
         }
 
         const auto& env = *parsed;
+        if (!env.is_object()) {
+            agent::emit_event(agent::make_error_event("Input envelope must be an object"));
+            continue;
+        }
+        bool valid = true;
+        for (const auto* key : {"type", "session_id", "message", "workspace"}) {
+            if (env.contains(key) && !env[key].is_string())
+                valid = false;
+        }
+        if (!valid) {
+            agent::emit_event(agent::make_error_event("Envelope fields must be strings"));
+            continue;
+        }
         std::string type = env.value("type", "");
         if (type != "user_message") {
             agent::emit_event(agent::make_error_event("Unknown envelope type: " + type));
@@ -80,11 +96,12 @@ int main(int argc, char* argv[]) {
 
         agent::TurnInput input;
         input.session_id = env.value("session_id", "default");
-        input.message    = env.value("message",    "");
-        input.workspace  = env.value("workspace",  "");
+        input.message = env.value("message", "");
+        input.workspace = env.value("workspace", "");
 
         if (input.message.empty()) {
-            agent::emit_event(agent::make_error_event("message field is required", input.session_id));
+            agent::emit_event(
+                agent::make_error_event("message field is required", input.session_id));
             continue;
         }
 

@@ -8,16 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
--
+- Release/Debug CI, local HTTP protocol smoke tests, and 1,000-turn performance observations.
+- Explicit overwrite approval policy, bounded session caching, and automatic transcript-size compaction.
+- Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 
 ### Changed
--
+- Updated pinned dependencies to nlohmann/json 3.12.0 and Catch2 3.16.1.
+- Test dependencies are optional with `BUILD_TESTING=OFF`.
+- Require an explicit model ID; removed the stale implicit Anthropic model fallback.
+- CLI stdout now contains the final answer; JSONL diagnostics go to stderr.
+- Replaced placeholder architecture/contribution instructions and recorded remaining v0 work.
 
 ### Fixed
--
-
-### Removed
--
+- Duplicated user/tool history and lost native provider tool-call data.
+- Unenforced prompt budgets, optional argument validation, and symlinked-parent escapes.
+- Cancellation/iteration-limit success reports, shell group timeout handling, and HTTP response bounds.
+- Truncated-tail append recovery, unbounded compaction, and lost cumulative compaction coverage.
+- Session ID traversal, configured credential disclosure, and malformed JSONL crashes.
 
 ## [0.1.0] - 2026-05-12
 

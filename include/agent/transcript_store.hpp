@@ -6,6 +6,7 @@
 #include <vector>
 #include <expected>
 #include <cstdint>
+#include <mutex>
 
 namespace agent {
 
@@ -15,7 +16,7 @@ struct TranscriptError {
 
 // Append-only JSONL transcript log for a session.
 class TranscriptStore {
-public:
+  public:
     // Initialize with the session transcript file path.
     explicit TranscriptStore(std::filesystem::path path);
 
@@ -23,24 +24,27 @@ public:
     std::expected<void, TranscriptError> append(const JsonValue& event);
 
     // Load recent events within a byte budget. Reads from the end.
-    std::expected<std::vector<JsonValue>, TranscriptError>
-    load_recent(size_t max_bytes) const;
+    std::expected<std::vector<JsonValue>, TranscriptError> load_recent(size_t max_bytes) const;
 
-    // Load all events (for compaction). Be careful with large transcripts.
-    std::expected<std::vector<JsonValue>, TranscriptError> load_all() const;
+    // Diagnostic full replay. Fails rather than exceeding the supplied byte bound.
+    std::expected<std::vector<JsonValue>, TranscriptError>
+    load_all(size_t max_bytes = 4194304) const;
 
     // Compact: ask for a summary string, write compaction_summary + recent tail,
     // using temp file and atomic rename.
-    std::expected<void, TranscriptError>
-    compact(const std::string& summary, size_t keep_recent_bytes = 16384);
+    std::expected<void, TranscriptError> compact(const std::string& summary,
+                                                 size_t keep_recent_bytes = 16384);
 
     // Number of bytes in the transcript file.
     std::expected<uintmax_t, TranscriptError> byte_size() const;
 
-    const std::filesystem::path& path() const { return path_; }
+    const std::filesystem::path& path() const {
+        return path_;
+    }
 
-private:
+  private:
     std::filesystem::path path_;
+    mutable std::recursive_mutex mutex_;
 };
 
 } // namespace agent

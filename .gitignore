@@ -2,3 +2,7 @@ build/
 .agent/
 *.o
 *.a
+build-*/
+agent.json
+workspace/
+__pycache__/

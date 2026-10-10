@@ -23,25 +23,28 @@ struct ModelConfig {
 };
 
 struct LimitsConfig {
-    size_t max_prompt_bytes      = 262144;
+    size_t max_prompt_bytes = 262144;
+    size_t max_transcript_bytes = 4194304;
     size_t max_tool_result_bytes = 65536;
     size_t max_shell_output_bytes = 65536;
-    uint32_t max_turn_seconds    = 300;
-    uint32_t max_tool_seconds    = 30;
+    uint32_t max_turn_seconds = 300;
+    uint32_t max_tool_seconds = 30;
     uint32_t max_concurrent_sessions = 4;
+    uint32_t max_cached_sessions = 64;
 };
 
 struct ToolsConfig {
     std::vector<std::string> allow = {"echo", "list_dir", "read_file", "write_file"};
-    std::vector<std::string> deny  = {"shell"};
+    std::vector<std::string> deny = {"shell"};
     bool enable_dangerous = false;
+    bool allow_overwrite = false;
 };
 
 struct Config {
     RuntimeConfig runtime;
-    ModelConfig   model;
-    LimitsConfig  limits;
-    ToolsConfig   tools;
+    ModelConfig model;
+    LimitsConfig limits;
+    ToolsConfig tools;
 };
 
 // Load config from a JSON file path. Returns error string on failure.

@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(snaphop_agent VERSION 0.1.0 LANGUAGES CXX)
 
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+include(CTest)
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -16,21 +22,13 @@ include(FetchContent)
 # nlohmann/json - single-header JSON library
 FetchContent_Declare(
     nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+    URL https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.12.0
+    URL_HASH SHA256=4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Catch2 - unit test framework
-FetchContent_Declare(
-    Catch2
-    URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.5.2.tar.gz
-    URL_HASH SHA256=269543a49eb76f40b3f93ff231d4c24c27a7e16c90e47d2e45bcc564de470c6e
-)
-FetchContent_MakeAvailable(Catch2)
-
 # Common library used by both targets
-file(GLOB_RECURSE AGENT_LIB_SOURCES
+set(AGENT_LIB_SOURCES
     src/config.cpp
     src/event.cpp
     src/json.cpp
@@ -51,7 +49,7 @@ file(GLOB_RECURSE AGENT_LIB_SOURCES
 
 add_library(agent_lib STATIC ${AGENT_LIB_SOURCES})
 target_include_directories(agent_lib PUBLIC include)
-target_link_libraries(agent_lib PUBLIC nlohmann_json::nlohmann_json CURL::libcurl)
+target_link_libraries(agent_lib PUBLIC nlohmann_json::nlohmann_json CURL::libcurl Threads::Threads)
 
 # agentd - headless JSONL runtime
 add_executable(agentd src/main_agentd.cpp)
@@ -61,12 +59,16 @@ target_link_libraries(agentd PRIVATE agent_lib)
 add_executable(agent_cli src/main_agent_cli.cpp)
 target_link_libraries(agent_cli PRIVATE agent_lib)
 
-# agent_tests - unit and integration tests
-file(GLOB TEST_SOURCES tests/*.cpp)
-add_executable(agent_tests ${TEST_SOURCES})
-target_link_libraries(agent_tests PRIVATE agent_lib Catch2::Catch2WithMain)
-target_include_directories(agent_tests PRIVATE include)
-
-include(CTest)
-include(Catch)
-catch_discover_tests(agent_tests)
+if(BUILD_TESTING)
+    FetchContent_Declare(
+        Catch2
+        URL https://codeload.github.com/catchorg/Catch2/tar.gz/refs/tags/v3.16.1
+        URL_HASH SHA256=d16bd1b8b2364918bd472cb216394acb93bde6784890df0d91bccfb3f28d777d
+    )
+    FetchContent_MakeAvailable(Catch2)
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
+    add_executable(agent_tests ${TEST_SOURCES})
+    target_link_libraries(agent_tests PRIVATE agent_lib Catch2::Catch2WithMain)
+    include(Catch)
+    catch_discover_tests(agent_tests)
+endif()

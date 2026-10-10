@@ -18,9 +18,12 @@ and AI coding agents. The conventions are the same for both.
 git checkout -b feat/short-description
 
 # 2. Make your changes, then verify
-<TODO: lint cmd>
-<TODO: typecheck cmd>
-<TODO: test cmd>
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel 2
+ctest --test-dir build --output-on-failure
+python3 scripts/check_protocol.py build
+# Format changed C++ files using the repository .clang-format.
+clang-format -i path/to/changed_file.cpp
 
 # 3. Commit using Conventional Commits
 git commit -m "feat(scope): what changed"
@@ -30,7 +33,7 @@ git commit -m "feat(scope): what changed"
 
 ## Pull request checklist
 
-- [ ] Lint, typecheck, and tests pass locally.
+- [ ] Build (warnings treated as errors), regression tests, and protocol smoke tests pass locally.
 - [ ] New behavior has tests; bug fixes have a regression test.
 - [ ] Public API changes are documented in code and (if breaking) in
       `CHANGELOG.md`.

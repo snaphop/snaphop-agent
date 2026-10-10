@@ -124,16 +124,31 @@ Run the local HTTP protocol smoke test without provider credentials:
 python3 scripts/check_protocol.py build
 ```
 
-The complete local verification command is `scripts/check.sh`. It builds with
+The complete local verification command is `scripts/check.sh` (requires Python 3
+and Cppcheck 2.13+ in addition to the build prerequisites). It builds with
 warnings as errors, tests build-script orchestration, runs the C++ regression
-suite, and checks both provider adapters against a loopback HTTP server. No
-provider account or API key is needed. The initial CMake configure downloads
+suite, checks both provider adapters against a loopback HTTP server, and runs
+static analysis. No provider account or API key is needed. The initial CMake configure downloads
 the pinned build dependencies; subsequent runs can use the cached sources.
 
 Build scripts run concurrent compiler jobs using `BUILD_JOBS`, then
 `CMAKE_BUILD_PARALLEL_LEVEL`, or the local CPU count by default. For example,
 `BUILD_JOBS=2 scripts/check.sh` caps compilation on a machine with limited RAM.
 Tests run sequentially because some existing fixtures share process resources.
+
+Install the static analyzer on Ubuntu with `sudo apt-get install cppcheck`.
+Run it independently with `scripts/static-analysis.sh`, or pass a build
+directory as the first argument. It configures CMake without requiring a build,
+then analyzes all configured runtime and test sources (including project
+headers) using the actual include paths and defines in `compile_commands.json`.
+Use `CPPCHECK=/path/to/cppcheck` to select a different executable. Analysis uses
+the same parallel-job settings as compilation.
+
+Errors, warnings, performance and portability diagnostics fail the local and
+CI checks. Diagnostics from downloaded dependencies are excluded; Catch2 macro
+compatibility definitions apply only to analysis and preserve test expressions.
+The log is saved to `build/static-analysis/cppcheck.log`, including on failure,
+and uploaded by CI. Analysis caches also stay inside the build directory.
 
 Measure coverage locally using GCC and its matching gcov:
 
@@ -177,6 +192,10 @@ cmake --build build-runtime --parallel
 ## Documentation
 
 - [`AGENTS.md`](./AGENTS.md) — canonical instructions for AI coding agents
+- [`docs/README.md`](./docs/README.md) — documentation index and maintenance status
+- [`docs/cli.md`](./docs/cli.md) — CLI, JSONL and configuration contract
+- [`docs/host-setup.md`](./docs/host-setup.md) — local development setup and verification
+- [`CODE_REVIEW.md`](./CODE_REVIEW.md) — review process and runtime safety priorities
 - [`docs/architecture.md`](./docs/architecture.md) — system design overview
 - [`docs/decisions/`](./docs/decisions/) — Architecture Decision Records
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — how to propose changes
@@ -191,7 +210,13 @@ cmake --build build-runtime --parallel
 | `CLAUDE.md`                         | Claude Code (imports `@AGENTS.md`)| active       |
 | `GEMINI.md`                         | Gemini CLI                        | active       |
 
-`AGENTS.md` is the source of truth. Every other file defers to it.
+`AGENTS.md` is the source of truth. Every other agent instruction file defers to it.
+
+Repository review skills live in [`.agents/skills/`](./.agents/skills/), with
+Claude symlinks in [`.claude/skills/`](./.claude/skills/): `review-bugs`,
+`review-documentations`, `review-enhancements`, and `review-prs`. See the
+[skill catalog](./CONTRIBUTING.md#repository-review-skills) for their scopes and
+[comparison record](./docs/repository-parity.md) for parity with snaphop-agent-vm.
 
 ## License
 

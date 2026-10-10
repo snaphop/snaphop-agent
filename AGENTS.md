@@ -1,5 +1,8 @@
 # AGENTS.md
 
+Canonical contributor and AI-agent instructions. `CLAUDE.md` and `GEMINI.md`
+defer to this file.
+
 ## Project brief
 
 Build a fast, headless, local-first AI agent in modern C++ inspired by OpenClaw’s gateway/session/tool-loop architecture, but intentionally smaller and framework-free for the initial release.
@@ -53,6 +56,17 @@ branches; 100% coverage remains an acceptance gap. Override the floors with
 `COVERAGE_MIN_LINES` and `COVERAGE_MIN_BRANCHES` to enforce the full target.
 Build scripts use `BUILD_JOBS`, then `CMAKE_BUILD_PARALLEL_LEVEL`, then the local
 CPU count. Set `BUILD_JOBS=2` on memory-constrained machines (as in CI).
+Local verification additionally requires Cppcheck 2.13+ as developer tooling.
+`scripts/check.sh` runs `scripts/static-analysis.sh` after tests; the same gate
+runs on pull requests, pushes, and version tags. Standalone analysis configures
+CMake with a compile database and analyzes runtime and test translation units,
+including project headers, using the build concurrency setting. Reports and
+incremental analysis data live under `build/static-analysis/` (or the selected
+build directory). Override the tool executable with `CPPCHECK` when needed.
+Errors, warnings, performance and portability diagnostics fail verification.
+Dependency diagnostics under `_deps` are excluded; analyzer-only Catch2 macro
+definitions preserve test expressions. Keep project parsing failures visible,
+and document any future narrowly scoped suppression with its justification.
 
 The October 2026 maintenance findings and remaining v0 acceptance gaps are
 tracked in `docs/status.md`. Existing milestone checkmarks indicate module
@@ -810,3 +824,23 @@ Before submitting code, verify:
 - Are tests included or updated?
 - Does the implementation avoid frameworks and unnecessary dependencies?
 - Can the feature be exercised through CLI or JSONL mode?
+
+
+## Repository review workflows
+
+For complete queues or repository-wide audits, use the canonical local skills:
+
+- [review-bugs](.agents/skills/review-bugs/SKILL.md): reproduce and resolve the open bug queue within existing authority.
+- [review-documentations](.agents/skills/review-documentations/SKILL.md): reconcile all documentation against source and tests.
+- [review-enhancements](.agents/skills/review-enhancements/SKILL.md): classify enhancement requests without implementing them.
+- [review-prs](.agents/skills/review-prs/SKILL.md): review and test the open PR queue; merge and clean up when authorized.
+
+Claude discovery uses relative symlinks under `.claude/skills/` to the same
+canonical folders. Keep skill metadata and links synchronized. Ordinary focused
+changes follow this file without requiring a whole-queue workflow.
+
+Use [CODE_REVIEW.md](CODE_REVIEW.md) for review findings and severity. Keep
+[CLI/config/JSONL contracts](docs/cli.md), [local setup](docs/host-setup.md),
+help output, examples, and tests synchronized with public behavior. Record
+notable changes in `CHANGELOG.md`, architectural decisions in `docs/decisions/`,
+and outstanding acceptance gaps in `docs/status.md`.

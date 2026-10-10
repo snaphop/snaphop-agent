@@ -21,7 +21,7 @@ Completed work:
 - Transcript tail recovery before append, bounded compaction, automatic
   transcript-size compaction, and cumulative summary coverage counters.
 - Plain CLI answers, malformed JSONL envelope handling, local provider smoke
-  tests, and Release/Debug CI configuration.
+  tests.
 
 Validation on Linux with GCC 15.2:
 

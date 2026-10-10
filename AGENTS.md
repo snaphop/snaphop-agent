@@ -16,6 +16,14 @@ Do not build GUI, browser dashboard, Discord/Slack/Telegram integrations, plugin
 
 ## Build and test
 
+The canonical repository is https://github.com/snaphop/snaphop-agent.
+Run `scripts/check.sh` before handing off a change; GitHub Actions uses the
+same script on pull requests and pushes to `master`. Version tags run those
+checks and publish Linux x86_64 archives with `LICENSE` and `NOTICE`.
+`VERSION=v0.1.0 scripts/build-release.sh` builds locally without publishing.
+Keep third-party notices current, and report suspected vulnerabilities only
+by email to security@snaphop.com.
+
 Prerequisites: `cmake` ≥ 3.20, GCC ≥ 13 or Clang ≥ 16 (C++23), `libcurl` dev headers.
 
 ```bash

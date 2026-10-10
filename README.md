@@ -1,5 +1,8 @@
 # snaphop-agent
 
+[![Verify](https://github.com/snaphop/snaphop-agent/actions/workflows/verify.yml/badge.svg)](https://github.com/snaphop/snaphop-agent/actions/workflows/verify.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 > Fast, headless, local-first AI agent runtime in C++23.
 
 A compact, framework-free agent runtime designed for low-latency tool-calling workloads. Driven from a terminal or JSONL stdin/stdout.
@@ -7,6 +10,9 @@ A compact, framework-free agent runtime designed for low-latency tool-calling wo
 ## Quick start
 
 ```bash
+git clone https://github.com/snaphop/snaphop-agent.git
+cd snaphop-agent
+
 # Build (Linux; CMake 3.20+, GCC 13+ or Clang 16+ with a C++23 library, libcurl headers)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
@@ -152,7 +158,30 @@ cmake --build build-runtime --parallel
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE), copyright 2026 SnapHop. Third-party notices are in
+[NOTICE](./NOTICE).
+
+## Contributing and releases
+
+Use [GitHub issues](https://github.com/snaphop/snaphop-agent/issues) for bugs and
+feature requests, and [CONTRIBUTING.md](./CONTRIBUTING.md) for development.
+Report suspected vulnerabilities privately to <security@snaphop.com> as described
+in [SECURITY.md](./SECURITY.md).
+
+`scripts/check.sh` builds and runs the regression and local protocol checks.
+GitHub Actions runs it on pull requests and pushes to `master`. Pushing a
+`vX.Y.Z` tag runs the same checks and publishes a GitHub Release containing
+the Linux x86_64 runtime archive, `LICENSE`, `NOTICE`, and `SHA256SUMS`.
+Prerelease tags such as `v0.1.0-rc.1` produce prereleases. Merges do not publish.
+
+Build an archive locally with `VERSION=v0.1.0 scripts/build-release.sh`.
+The archive contains `bin/agent_cli`, `bin/agentd`, example configuration, and
+documentation. These are dynamically linked Linux binaries: GitHub releases
+are built on Ubuntu 24.04 with GCC 14 and require compatible libcurl, libstdc++,
+and glibc runtime libraries. Build from source on other systems. Local archives
+inherit the local system's library requirements.
+
+The [migration record](./docs/github-migration.md) links the earlier Gitea PRs.
 
 ## Bounded tool output
 

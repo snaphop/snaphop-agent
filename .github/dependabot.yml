@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+    labels: [dependencies]
+# CMake FetchContent dependencies are pinned in CMakeLists.txt and updated
+# manually; Dependabot does not manage those archive versions or hashes.

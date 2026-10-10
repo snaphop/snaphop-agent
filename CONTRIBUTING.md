@@ -13,15 +13,16 @@ and AI coding agents. The conventions are the same for both.
 
 ## Development workflow
 
+Fork [snaphop/snaphop-agent](https://github.com/snaphop/snaphop-agent) on GitHub
+and submit pull requests there. Bug reports and feature requests belong in
+its GitHub issue tracker; suspected vulnerabilities go to <security@snaphop.com>.
+
 ```bash
 # 1. Branch
 git checkout -b feat/short-description
 
 # 2. Make your changes, then verify
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel 2
-ctest --test-dir build --output-on-failure
-python3 scripts/check_protocol.py build
+scripts/check.sh
 # Format changed C++ files using the repository .clang-format.
 clang-format -i path/to/changed_file.cpp
 
@@ -29,7 +30,14 @@ clang-format -i path/to/changed_file.cpp
 git commit -m "feat(scope): what changed"
 
 # 4. Push and open a PR
+git push --set-upstream origin feat/short-description
 ```
+
+GitHub Actions runs the same check on pull requests and pushes to `master`.
+Releases are published only on `vX.Y.Z` tags, after verification. Maintainers
+can build the runtime archive locally with
+`VERSION=v0.1.0 scripts/build-release.sh`; this does not publish it.
+Keep dependency notices in `NOTICE` synchronized with dependency changes.
 
 ## Pull request checklist
 

@@ -1,0 +1,74 @@
+# Only version tags publish. Build repository code with a read-only token;
+# give write permission only to the separate publish job with no checkout.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 cmake libcurl4-openssl-dev python3
+      - name: Verify
+        run: scripts/check.sh
+      - name: Package the runtime
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: scripts/build-release.sh
+      - name: Upload release files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-files
+          path: |
+            dist/snaphop-agent-*.tar.gz
+            dist/LICENSE
+            dist/NOTICE
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: dist
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$VERSION" --verify-tag --title "$VERSION" \
+            --generate-notes "${args[@]}" \
+            "dist/snaphop-agent-${VERSION}-linux-x86_64.tar.gz" \
+            dist/LICENSE dist/NOTICE dist/SHA256SUMS

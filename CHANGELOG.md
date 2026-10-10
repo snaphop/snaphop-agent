@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- MIT license and dependency notices, GitHub verification and tag-triggered
+  release workflows, grouped Actions dependency updates, and a PR template.
+- Local verification and Linux x86_64 release packaging scripts.
 - Paginated UTF-8 file reads, useful bounded tool output, and stalled tool-loop detection.
 - A bounded worker pool for approved read-only tool batches, configurable with `max_parallel_tools`.
 - Interrupted tool-batch recovery with explicit unknown outcomes and unique local execution IDs.
@@ -16,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 
 ### Changed
+- Moved the canonical repository to `snaphop/snaphop-agent` on GitHub, preserving
+  Gitea Git history; replaced the placeholder security contact with SnapHop's.
 - Cache and freeze tool definitions; share canonical input schemas between validation and provider adapters.
 - Reuse stable context within a turn and trim older tool payloads under prompt pressure while preserving call/result pairing.
 - Reject undeclared tool arguments and duplicate provider call IDs within a response before execution.

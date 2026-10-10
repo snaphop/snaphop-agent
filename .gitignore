@@ -6,3 +6,4 @@ build-*/
 agent.json
 workspace/
 __pycache__/
+dist/

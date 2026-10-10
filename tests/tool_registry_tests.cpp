@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 namespace agent {
 std::unique_ptr<ITool> make_read_file_tool();
 std::unique_ptr<ITool> make_write_file_tool();
-}
+} // namespace agent
 
 // Helper: create a temp workspace.
 static fs::path make_workspace() {
@@ -20,7 +20,7 @@ static fs::path make_workspace() {
 
 // Simple mock tool for registry tests.
 class PingTool : public agent::ITool {
-public:
+  public:
     agent::ToolDefinition definition() const override {
         return {.name = "ping", .description = "pong", .params = {}, .dangerous = false};
     }
@@ -117,8 +117,8 @@ TEST_CASE("ReadFileTool: reads within workspace", "[tools]") {
 
     agent::LimitsConfig limits;
     agent::ToolContext ctx{.workspace = ws, .limits = &limits};
-    agent::ToolCall tc{.call_id = "c1", .name = "read_file",
-                       .arguments = agent::JsonValue{{"path", "hello.txt"}}};
+    agent::ToolCall tc{
+        .call_id = "c1", .name = "read_file", .arguments = agent::JsonValue{{"path", "hello.txt"}}};
     auto result = reg.execute(tc, ctx);
     REQUIRE(result.has_value());
     CHECK(result->ok);
@@ -135,7 +135,8 @@ TEST_CASE("ReadFileTool: rejects path escaping workspace", "[tools]") {
 
     agent::LimitsConfig limits;
     agent::ToolContext ctx{.workspace = ws, .limits = &limits};
-    agent::ToolCall tc{.call_id = "c1", .name = "read_file",
+    agent::ToolCall tc{.call_id = "c1",
+                       .name = "read_file",
                        .arguments = agent::JsonValue{{"path", "../../etc/passwd"}}};
     auto result = reg.execute(tc, ctx);
     REQUIRE(result.has_value());
@@ -153,12 +154,55 @@ TEST_CASE("WriteFileTool: writes inside workspace", "[tools]") {
 
     agent::LimitsConfig limits;
     agent::ToolContext ctx{.workspace = ws, .limits = &limits};
-    agent::ToolCall tc{.call_id = "c1", .name = "write_file",
+    agent::ToolCall tc{.call_id = "c1",
+                       .name = "write_file",
                        .arguments = agent::JsonValue{{"path", "output.txt"}, {"content", "data"}}};
     auto result = reg.execute(tc, ctx);
     REQUIRE(result.has_value());
     CHECK(result->ok);
     CHECK(fs::exists(ws / "output.txt"));
 
+    fs::remove_all(ws);
+}
+
+TEST_CASE("WorkspacePath: new files cannot escape through symlink parents", "[workspace]") {
+    auto ws = make_workspace();
+    auto outside = ws.string() + "_outside";
+    fs::create_directories(outside);
+    fs::create_directory_symlink(outside, ws / "link");
+    CHECK_FALSE(agent::resolve_workspace_path(ws, "link/new.txt"));
+    CHECK_FALSE(agent::resolve_workspace_path(ws, "link/../escape.txt"));
+    CHECK(agent::resolve_workspace_path(ws, "..valid.txt"));
+    fs::remove_all(ws);
+    fs::remove_all(outside);
+}
+
+TEST_CASE("ToolRegistry: optional arguments are type checked", "[registry]") {
+    auto ws = make_workspace();
+    agent::ToolRegistry registry;
+    registry.register_tool(agent::make_write_file_tool());
+    agent::ToolContext ctx{.workspace = ws};
+    auto result = registry.execute(
+        {"c", "write_file", {{"path", "file"}, {"content", "text"}, {"overwrite", "yes"}}}, ctx);
+    CHECK_FALSE(result);
+    CHECK_FALSE(fs::exists(ws / "file"));
+    fs::remove_all(ws);
+}
+
+TEST_CASE("WriteFileTool: model cannot grant overwrite policy", "[tools]") {
+    auto ws = make_workspace();
+    std::ofstream(ws / "file") << "original";
+    agent::ToolRegistry registry;
+    registry.register_tool(agent::make_write_file_tool());
+    agent::ToolContext ctx{.workspace = ws};
+    agent::ToolCall call{
+        "c", "write_file", {{"path", "file"}, {"content", "replacement"}, {"overwrite", true}}};
+    auto denied = registry.execute(call, ctx);
+    REQUIRE(denied);
+    CHECK_FALSE(denied->ok);
+    ctx.allow_overwrite = true;
+    auto approved = registry.execute(call, ctx);
+    REQUIRE(approved);
+    CHECK(approved->ok);
     fs::remove_all(ws);
 }

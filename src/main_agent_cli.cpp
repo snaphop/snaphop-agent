@@ -7,22 +7,21 @@
 #include <filesystem>
 
 static void print_usage(const char* argv0) {
-    std::cerr
-        << "Usage: " << argv0 << " [options] \"message\"\n"
-        << "\n"
-        << "Options:\n"
-        << "  --config <path>     Path to agent.json (default: agent.json)\n"
-        << "  --session <id>      Session ID (default: default)\n"
-        << "  --workspace <path>  Workspace directory (default from config)\n"
-        << "  --help              Show this help\n"
-        << "\n"
-        << "The assistant's final response is written to stdout.\n"
-        << "Lifecycle events go to stderr in non-JSONL mode.\n";
+    std::cerr << "Usage: " << argv0 << " [options] \"message\"\n"
+              << "\n"
+              << "Options:\n"
+              << "  --config <path>     Path to agent.json (default: agent.json)\n"
+              << "  --session <id>      Session ID (default: default)\n"
+              << "  --workspace <path>  Workspace directory (default from config)\n"
+              << "  --help              Show this help\n"
+              << "\n"
+              << "The assistant's final response is written to stdout.\n"
+              << "JSONL diagnostics go to stderr.\n";
 }
 
 int main(int argc, char* argv[]) {
-    std::string config_path  = "agent.json";
-    std::string session_id   = "default";
+    std::string config_path = "agent.json";
+    std::string session_id = "default";
     std::string workspace;
     std::string message;
 
@@ -63,13 +62,14 @@ int main(int argc, char* argv[]) {
     }
     agent::apply_env_overrides(cfg);
 
+    agent::set_event_stream(std::cerr);
     // Build runtime.
     auto runtime = agent::make_default_runtime(std::move(cfg));
 
     agent::TurnInput input{
         .session_id = session_id,
-        .message    = message,
-        .workspace  = workspace,
+        .message = message,
+        .workspace = workspace,
     };
 
     auto result = runtime->run_turn(input);
@@ -79,11 +79,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Final text already emitted via emit_event; also print directly to stdout
-    // so the CLI user sees the answer even if JSONL is disabled.
-    if (!runtime->config().runtime.jsonl_stdio) {
-        std::cout << result->final_text << "\n";
-    }
+    std::cout << result->final_text << "\n";
 
     return 0;
 }

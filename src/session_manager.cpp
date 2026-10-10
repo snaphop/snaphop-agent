@@ -17,33 +17,39 @@ fs::path SessionManager::transcript_path(const std::string& session_id) const {
 }
 
 std::expected<SessionState*, SessionError>
-SessionManager::get_or_create(const std::string& session_id,
-                               const fs::path& workspace_override) {
+SessionManager::get_or_create(const std::string& session_id, const fs::path& workspace_override) {
+    if (session_id.empty() || session_id.size() > 128 || session_id == "." || session_id == ".." ||
+        session_id.find_first_not_of(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.") !=
+            std::string::npos)
+        return std::unexpected(
+            SessionError{"Invalid session ID (use letters, digits, underscore, dash or dot)"});
     std::lock_guard<std::mutex> lock(sessions_mutex_);
 
     auto it = sessions_.find(session_id);
-    if (it != sessions_.end()) return it->second.get();
+    if (it != sessions_.end())
+        return it->second.get();
 
-    if (sessions_.size() >= cfg_.limits.max_concurrent_sessions) {
-        return std::unexpected(SessionError{
-            "Max concurrent sessions (" + std::to_string(cfg_.limits.max_concurrent_sessions) + ") reached"
-        });
+    if (sessions_.size() >= cfg_.limits.max_cached_sessions) {
+        return std::unexpected(SessionError{"Max cached sessions (" +
+                                            std::to_string(cfg_.limits.max_cached_sessions) +
+                                            ") reached"});
     }
 
-    fs::path ws = workspace_override.empty()
-                    ? fs::path(cfg_.runtime.default_workspace)
-                    : workspace_override;
+    fs::path ws =
+        workspace_override.empty() ? fs::path(cfg_.runtime.default_workspace) : workspace_override;
 
     // Create workspace and session data dir.
     std::error_code ec;
     fs::create_directories(ws, ec);
-    if (ec) return std::unexpected(SessionError{"Cannot create workspace: " + ec.message()});
+    if (ec)
+        return std::unexpected(SessionError{"Cannot create workspace: " + ec.message()});
 
     fs::create_directories(session_dir(session_id), ec);
-    if (ec) return std::unexpected(SessionError{"Cannot create session dir: " + ec.message()});
+    if (ec)
+        return std::unexpected(SessionError{"Cannot create session dir: " + ec.message()});
 
-    auto state = std::make_unique<SessionState>(
-        session_id, ws, transcript_path(session_id));
+    auto state = std::make_unique<SessionState>(session_id, ws, transcript_path(session_id));
 
     auto* ptr = state.get();
     sessions_.emplace(session_id, std::move(state));

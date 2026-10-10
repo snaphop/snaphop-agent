@@ -2,12 +2,12 @@
 
 > Fast, headless, local-first AI agent runtime in C++23.
 
-A compact, framework-free agent runtime designed for low-latency tool-calling workloads. Driven from a terminal, JSONL stdin/stdout, or a local IPC boundary.
+A compact, framework-free agent runtime designed for low-latency tool-calling workloads. Driven from a terminal or JSONL stdin/stdout.
 
 ## Quick start
 
 ```bash
-# Build (requires cmake 3.20+, a C++23-capable compiler, libcurl dev headers)
+# Build (Linux; CMake 3.20+, GCC 13+ or Clang 16+ with a C++23 library, libcurl headers)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 
@@ -17,6 +17,7 @@ build/agent_tests
 # Interactive turn (requires AGENT_API_KEY env var)
 export AGENT_API_KEY=<your-api-key>
 cp examples/config.example.json agent.json
+# Set model.model in agent.json to a model ID available to your provider account.
 build/agent_cli --workspace ./workspace "List the files in the workspace"
 
 # JSONL daemon mode
@@ -34,7 +35,7 @@ stdin / IPC ---> AgentRuntime / Hub ---> stdout events
   SessionStore   ModelClient    ToolRegistry
        |              |              |
   Transcript     Provider API   Built-in tools
-  Compaction     Streaming      Shell / FS / HTTP
+  Compaction     HTTP adapters  Shell / FS
 ```
 
 See [`docs/architecture.md`](./docs/architecture.md) for detail.
@@ -92,14 +93,43 @@ paths, `..` traversal, symlink escapes, and NUL bytes are rejected.
 
 ## Resource limits
 
-All limits are enforced; defaults are in `examples/config.example.json`:
+Defaults are in `examples/config.example.json`. Turn deadlines and cancellation
+are cooperative; synchronous file operations cannot be forcibly interrupted.
 
 - `max_prompt_bytes`: 256 KB
 - `max_tool_result_bytes`: 64 KB
 - `max_shell_output_bytes`: 64 KB
 - `max_turn_seconds`: 300
 - `max_tool_seconds`: 30
-- `max_concurrent_sessions`: 4
+- `max_concurrent_sessions`: 4 running turns
+- `max_cached_sessions`: 64 retained session objects (no automatic eviction)
+- `max_transcript_bytes`: 4 MiB, triggering deterministic compaction
+
+Overwriting an existing file requires both `overwrite: true` in the tool call
+and `tools.allow_overwrite: true` in operator configuration. Shell remains
+blocked by default.
+
+Provider adapters currently buffer responses before emitting text events.
+See [maintenance status](docs/status.md) for remaining v0 work.
+
+Run the local HTTP protocol smoke test without provider credentials:
+
+```bash
+python3 scripts/check_protocol.py build
+```
+
+Run the performance observation separately:
+
+```bash
+build/agent_tests '[performance]'
+```
+
+Build runtime targets without downloading the test framework:
+
+```bash
+cmake -S . -B build-runtime -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+cmake --build build-runtime --parallel
+```
 
 ## Documentation
 

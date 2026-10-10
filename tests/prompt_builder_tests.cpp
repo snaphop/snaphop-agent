@@ -22,7 +22,7 @@ TEST_CASE("PromptBuilder: builds request with system prompt and user message", "
 
 TEST_CASE("PromptBuilder: respects byte budget by trimming history", "[prompt]") {
     auto cfg = default_cfg();
-    cfg.limits.max_prompt_bytes = 200; // very tight budget
+    cfg.limits.max_prompt_bytes = 1024; // tight but can fit the base prompt
     agent::PromptBuilder builder(cfg);
 
     // Build a long history.
@@ -38,6 +38,8 @@ TEST_CASE("PromptBuilder: respects byte budget by trimming history", "[prompt]")
     CHECK(req.messages.back().content == "new question");
     // There should be fewer than 101 messages in total.
     CHECK(req.messages.size() < 101);
+    CHECK(agent::to_json_string(agent::anthropic_request_body(req)).size() <=
+          cfg.limits.max_prompt_bytes);
 }
 
 TEST_CASE("PromptBuilder: injects tool definitions into system prompt", "[prompt]") {
@@ -45,8 +47,7 @@ TEST_CASE("PromptBuilder: injects tool definitions into system prompt", "[prompt
     agent::PromptBuilder builder(cfg);
 
     std::vector<agent::ToolDefinition> tools = {
-        {.name = "echo", .description = "Echo text", .params = {}, .dangerous = false}
-    };
+        {.name = "echo", .description = "Echo text", .params = {}, .dangerous = false}};
 
     auto req = builder.build({}, "test", tools);
     CHECK(req.system_prompt.find("echo") != std::string::npos);
@@ -71,4 +72,26 @@ TEST_CASE("PromptBuilder: model name set from config", "[prompt]") {
 
     auto req = builder.build({}, "hi", {});
     CHECK(req.model == "my-special-model");
+}
+
+TEST_CASE("PromptBuilder: rejects current turn that cannot fit", "[prompt]") {
+    auto cfg = default_cfg();
+    cfg.limits.max_prompt_bytes = 200;
+    agent::PromptBuilder builder(cfg);
+    REQUIRE_THROWS_AS(builder.build({}, "hello", {}), std::length_error);
+}
+
+TEST_CASE("PromptBuilder: escaping counts toward the serialized byte budget", "[prompt]") {
+    auto cfg = default_cfg();
+    cfg.model.provider = "openai";
+    cfg.limits.max_prompt_bytes = 1200;
+    agent::PromptBuilder builder(cfg);
+    std::vector<agent::JsonValue> history;
+    for (int i = 0; i < 8; ++i) {
+        history.push_back(agent::make_transcript_user("t", std::string(100, '"')));
+        history.push_back(agent::make_transcript_assistant("t", std::string(100, '\\')));
+    }
+    auto req = builder.build(history, "latest", {});
+    CHECK(agent::to_json_string(agent::openai_request_body(req)).size() <= 1200);
+    CHECK(req.messages.back().content == "latest");
 }

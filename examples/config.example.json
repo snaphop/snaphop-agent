@@ -6,21 +6,24 @@
   },
   "model": {
     "provider": "anthropic",
-    "model": "claude-opus-4-7-20251101",
+    "model": "YOUR_MODEL_ID",
     "api_key_env": "AGENT_API_KEY",
     "endpoint_env": "AGENT_ENDPOINT"
   },
   "limits": {
     "max_prompt_bytes": 262144,
+    "max_transcript_bytes": 4194304,
     "max_tool_result_bytes": 65536,
     "max_shell_output_bytes": 65536,
     "max_turn_seconds": 300,
     "max_tool_seconds": 30,
-    "max_concurrent_sessions": 4
+    "max_concurrent_sessions": 4,
+    "max_cached_sessions": 64
   },
   "tools": {
     "allow": ["echo", "list_dir", "read_file", "write_file"],
     "deny": ["shell"],
-    "enable_dangerous": false
+    "enable_dangerous": false,
+    "allow_overwrite": false
   }
 }

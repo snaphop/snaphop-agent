@@ -33,7 +33,13 @@ printf '%s\n' '{"type":"user_message","session_id":"s1","message":"hello"}' \
   | AGENT_API_KEY=<key> build/agentd --config examples/config.example.json
 ```
 
-FetchContent automatically downloads `nlohmann/json` (v3.11.3) and `Catch2` (v3.5.2) on first build. No other dependencies required beyond CMake and libcurl.
+FetchContent automatically downloads `nlohmann/json` (v3.12.0) and `Catch2` (v3.16.1) on first build. No other runtime dependencies required beyond CMake and libcurl.
+Catch2 is fetched only with `BUILD_TESTING=ON`. Python 3 is optional developer
+tooling for `scripts/check_protocol.py`, not a runtime dependency.
+
+The October 2026 maintenance findings and remaining v0 acceptance gaps are
+tracked in `docs/status.md`. Existing milestone checkmarks indicate module
+presence, not completion of every listed acceptance criterion.
 
 ---
 

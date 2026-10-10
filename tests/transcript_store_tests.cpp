@@ -7,8 +7,10 @@
 namespace fs = std::filesystem;
 
 static fs::path temp_transcript() {
-    auto tmp = fs::temp_directory_path() / ("test_transcript_" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count()) + ".jsonl");
+    auto tmp =
+        fs::temp_directory_path() /
+        ("test_transcript_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".jsonl");
     return tmp;
 }
 
@@ -115,5 +117,55 @@ TEST_CASE("TranscriptStore: compaction uses atomic rename (no partial writes)", 
     tmp += ".tmp";
     CHECK(!fs::exists(tmp));
 
+    fs::remove(path);
+}
+
+TEST_CASE("TranscriptStore: append recovers a truncated final record", "[transcript]") {
+    auto path = temp_transcript();
+    agent::TranscriptStore store(path);
+    REQUIRE(store.append(agent::make_transcript_user("t", "first")));
+    std::ofstream(path, std::ios::app) << R"({"broken":)";
+    REQUIRE(store.append(agent::make_transcript_assistant("t", "second")));
+    auto events = store.load_all();
+    REQUIRE(events);
+    REQUIRE(events->size() == 2);
+    CHECK(events->back()["text"] == "second");
+    fs::remove(path);
+}
+
+TEST_CASE("TranscriptStore: exact tail boundary retains complete record", "[transcript]") {
+    auto path = temp_transcript();
+    agent::TranscriptStore store(path);
+    REQUIRE(store.append(agent::make_transcript_user("t", "first")));
+    auto last = agent::make_transcript_assistant("t", "last");
+    REQUIRE(store.append(last));
+    auto events = store.load_recent(agent::to_json_string(last).size() + 1);
+    REQUIRE(events);
+    REQUIRE(events->size() == 1);
+    CHECK(events->front()["text"] == "last");
+    fs::remove(path);
+}
+
+TEST_CASE("TranscriptStore: repeated compaction preserves cumulative coverage", "[transcript]") {
+    auto path = temp_transcript();
+    agent::TranscriptStore store(path);
+    for (int i = 0; i < 10; ++i)
+        REQUIRE(store.append(agent::make_transcript_user("t", "goal")));
+    REQUIRE(store.compact("first", 0));
+    for (int i = 0; i < 3; ++i)
+        REQUIRE(store.append(agent::make_transcript_user("t", "next")));
+    REQUIRE(store.compact("second", 0));
+    auto events = store.load_all();
+    REQUIRE(events);
+    REQUIRE(events->size() == 1);
+    CHECK(events->front()["covered_until_event"] == 13);
+    fs::remove(path);
+}
+
+TEST_CASE("TranscriptStore: full replay refuses oversized history", "[transcript]") {
+    auto path = temp_transcript();
+    agent::TranscriptStore store(path);
+    REQUIRE(store.append(agent::make_transcript_user("t", std::string(100, 'x'))));
+    CHECK_FALSE(store.load_all(16));
     fs::remove(path);
 }

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Release/Debug CI, local HTTP protocol smoke tests, and 1,000-turn performance observations.
+- Local HTTP protocol smoke tests and 1,000-turn performance observations.
 - Explicit overwrite approval policy, bounded session caching, and automatic transcript-size compaction.
 - Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 

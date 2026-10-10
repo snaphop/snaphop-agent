@@ -109,3 +109,10 @@ Cppcheck is licensed under GPL-3.0-or-later by Daniel Marjamaki and the Cppcheck
 team. It analyzes project sources as a separate developer tool; it is not
 linked into or bundled with SnapHop Agent. Its license and component notices
 accompany the installed package (on Ubuntu, /usr/share/doc/cppcheck/copyright).
+
+Trivy 0.75.0 (separate developer tooling; not included in runtime archives)
+https://github.com/aquasecurity/trivy
+----------------------------------------------------------------------------
+Trivy is licensed under Apache-2.0 by Aqua Security and its contributors. The
+checksum-pinned installer retains the upstream LICENSE beside the executable.
+Trivy and its databases are not linked into or bundled with SnapHop Agent.

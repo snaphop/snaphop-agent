@@ -35,3 +35,17 @@ dependencies' usage.
 
 Out of scope: third-party services, infrastructure issues unrelated to this
 codebase, social engineering, denial-of-service via volumetric traffic.
+
+## Automated security checks
+
+Run `scripts/install-trivy.sh`, then `scripts/check.sh` on a maintained
+Debian/Ubuntu host. [Security check documentation](docs/security-checks.md)
+describes scan coverage, private reports and limits. Vulnerability, secret and
+misconfiguration findings at every severity fail checks, including unfixed
+findings. The scanner and advisory database complement manual review; passing
+them does not prove the runtime is free of security defects. License inventories
+are informational and require human review.
+
+CI does not publish raw security reports or secret matches. Investigate failed
+scans locally and contact the private reporting address above with relevant,
+redacted evidence. Do not add ignores to hide an unresolved report.

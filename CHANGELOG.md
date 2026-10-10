@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Required Trivy security scans locally and in verification/release CI, with
+  pinned installation, explicit C++ and linked-runtime dependency inventories,
+  private reports and weekly advisory refresh checks.
 - Four canonical repository review skills with discovery metadata and Claude symlinks,
   plus code-review guidance, CLI/configuration contract, local setup and a VM repository comparison.
 - Required Cppcheck static analysis in local and CI verification, with diagnostic logs.
@@ -24,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 
 ### Changed
+- Standardized the product display name as SnapHop Agent.
 - Moved the canonical repository to `snaphop/snaphop-agent` on GitHub, preserving
   Gitea Git history; replaced the placeholder security contact with SnapHop's.
 - Cache and freeze tool definitions; share canonical input schemas between validation and provider adapters.
@@ -45,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-05-12
 
 ### Added
-- Full v0 implementation of the snaphop-agent runtime (all 5 milestones).
+- Full v0 implementation of the SnapHop Agent runtime (all 5 milestones).
 - CMake build system with C++23, FetchContent for nlohmann/json and Catch2.
 - `AgentRuntime` — turn lifecycle hub with tool-call continuation loop (max 16 iterations).
 - `SessionManager` — session creation, workspace provisioning, per-session turn mutex.

@@ -5,6 +5,9 @@ defer to this file.
 
 ## Project brief
 
+The product name is **SnapHop Agent**. Use `snaphop-agent` for the repository
+slug and release archive filenames, and `snaphop_agent` for the CMake identifier.
+
 Build a fast, headless, local-first AI agent in modern C++ inspired by OpenClaw’s gateway/session/tool-loop architecture, but intentionally smaller and framework-free for the initial release.
 
 The first release is **not** a messaging-platform gateway. It is a headless agent runtime that can be driven from a terminal, JSONL stdin/stdout, or a minimal local IPC boundary. Focus on:
@@ -28,6 +31,14 @@ Keep third-party notices current, and report suspected vulnerabilities only
 by email to security@snaphop.com.
 
 Prerequisites: `cmake` ≥ 3.20, GCC ≥ 13 or Clang ≥ 16 (C++23), `libcurl` dev headers.
+Full local checks also require Python 3, Cppcheck 2.13+, and Trivy 0.75.0.
+Install the checksum-pinned scanner with `scripts/install-trivy.sh`. Security
+checks inventory CMake pins and linked Debian/Ubuntu runtime packages, and run
+repository vulnerability, secret, misconfiguration, and full license scans.
+All security severities gate verification, including unfixed findings. License
+entries are informational inventory. Do not suppress findings to make a gate pass.
+Private reports are under `<build>/security/`; never upload them to public
+issues, PRs, logs, or artifacts. Follow `SECURITY.md` for suspected vulnerabilities.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

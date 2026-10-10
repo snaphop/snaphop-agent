@@ -11,3 +11,5 @@ dist/
 *.gcda
 *.gcno
 *.gcov
+
+.tools/

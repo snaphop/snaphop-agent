@@ -3,6 +3,7 @@
 - [CLI and JSONL contract](cli.md) — entry points, configuration, events, limits and persistence.
 - [Local development setup](host-setup.md) — build, test, static analysis, coverage and release commands.
 - [Architecture](architecture.md) — runtime and component overview.
+- [Security checks](security-checks.md) — Trivy coverage, private reports and limitations.
 - [Tests and fixtures](../tests/README.md) — local test scope and fixture provenance.
 - [Maintenance status](status.md) — measured verification and remaining v0 acceptance gaps.
 - [Repository comparison](repository-parity.md) — skills/document parity with snaphop-agent-vm.

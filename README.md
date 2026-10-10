@@ -1,4 +1,4 @@
-# snaphop-agent
+# SnapHop Agent
 
 [![Verify](https://github.com/snaphop/snaphop-agent/actions/workflows/verify.yml/badge.svg)](https://github.com/snaphop/snaphop-agent/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
@@ -125,11 +125,11 @@ python3 scripts/check_protocol.py build
 ```
 
 The complete local verification command is `scripts/check.sh` (requires Python 3
-and Cppcheck 2.13+ in addition to the build prerequisites). It builds with
-warnings as errors, tests build-script orchestration, runs the C++ regression
+and Cppcheck 2.13+, plus Trivy 0.75.0, in addition to the build prerequisites).
+It builds with warnings as errors, tests build-script orchestration, runs the C++ regression
 suite, checks both provider adapters against a loopback HTTP server, and runs
-static analysis. No provider account or API key is needed. The initial CMake configure downloads
-the pinned build dependencies; subsequent runs can use the cached sources.
+static analysis and security scans. No provider account or API key is needed.
+The initial CMake configure downloads the pinned build dependencies; subsequent runs can use the cached sources.
 
 Build scripts run concurrent compiler jobs using `BUILD_JOBS`, then
 `CMAKE_BUILD_PARALLEL_LEVEL`, or the local CPU count by default. For example,
@@ -149,6 +149,27 @@ CI checks. Diagnostics from downloaded dependencies are excluded; Catch2 macro
 compatibility definitions apply only to analysis and preserve test expressions.
 The log is saved to `build/static-analysis/cppcheck.log`, including on failure,
 and uploaded by CI. Analysis caches also stay inside the build directory.
+
+Install and run the required security scanner:
+
+```bash
+scripts/install-trivy.sh
+scripts/security-check.sh build
+# scripts/check.sh also runs this gate after building and testing.
+```
+
+The installer verifies a pinned Trivy archive SHA256. Set `TRIVY=/path/to/trivy`
+to use another installation. Security scans cover authored repository files,
+optional Python requirements, pinned C++ dependencies through a generated
+CycloneDX SBOM, and distro packages owning the built executables' linked
+libraries. Vulnerability, misconfiguration and secret findings at every severity
+fail verification, including unfixed vulnerabilities. Full license scanning
+produces an informational inventory. Scan errors and missing package coverage
+also fail; zero detected packages cannot silently pass the dependency checks.
+
+Private reports live in `build/security/` with restricted permissions. They are
+not printed or uploaded publicly. See [security-check scope and handling](docs/security-checks.md)
+for exclusions, Debian/Ubuntu prerequisites, database downloads and limitations.
 
 Measure coverage locally using GCC and its matching gcov:
 
@@ -195,6 +216,7 @@ cmake --build build-runtime --parallel
 - [`docs/README.md`](./docs/README.md) — documentation index and maintenance status
 - [`docs/cli.md`](./docs/cli.md) — CLI, JSONL and configuration contract
 - [`docs/host-setup.md`](./docs/host-setup.md) — local development setup and verification
+- [`docs/security-checks.md`](./docs/security-checks.md) — Trivy scope, reports and finding handling
 - [`CODE_REVIEW.md`](./CODE_REVIEW.md) — review process and runtime safety priorities
 - [`docs/architecture.md`](./docs/architecture.md) — system design overview
 - [`docs/decisions/`](./docs/decisions/) — Architecture Decision Records

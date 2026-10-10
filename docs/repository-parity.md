@@ -6,7 +6,7 @@ QEMU/libvirt provisioning; this repository is a C++ headless agent runtime.
 Parity means equivalent contributor and agent workflows adapted to this
 project's contracts. It does not import VM functionality or its approval rules.
 
-| Reference material | snaphop-agent equivalent / result |
+| Reference material | SnapHop Agent equivalent / result |
 |---|---|
 | Four `.agents/skills/*/SKILL.md` workflows | Added `review-bugs`, `review-documentations`, `review-enhancements`, `review-prs`, covering the same whole-queue/audit tasks. |
 | Each skill's `agents/openai.yaml` | Added discovery metadata and invocation prompts. |

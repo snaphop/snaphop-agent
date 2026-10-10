@@ -20,7 +20,7 @@ Not verified: <!-- State any gaps explicitly. -->
 
 ## Checklist
 
-- [ ] `scripts/check.sh` passes (build, script and C++ tests, local HTTP protocol checks, static analysis).
+- [ ] `scripts/check.sh` passes (build, script and C++ tests, local HTTP protocol checks, static analysis, Trivy security scans).
 - [ ] Changed C++ files follow `.clang-format`; new behavior has meaningful tests.
 - [ ] Public behavior and configuration changes are documented; notable changes appear in `CHANGELOG.md`.
 - [ ] Significant architectural decisions have an ADR.

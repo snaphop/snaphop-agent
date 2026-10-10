@@ -35,8 +35,11 @@ git push --set-upstream origin feat/short-description
 
 GitHub Actions runs the same check on pull requests and pushes to `master`.
 Install Cppcheck 2.13+ before running `scripts/check.sh`; static analysis is a
-required part of verification. `scripts/static-analysis.sh` runs it separately
-and saves its log under the build directory. Project diagnostic suppressions
+required part of verification. Install Trivy with `scripts/install-trivy.sh`;
+the [security gate](docs/security-checks.md) is also required and runs locally
+and in CI. Keep finding details private, never weaken gates or add broad ignores,
+and disclose verification failures explicitly. Run `scripts/static-analysis.sh`
+for Cppcheck alone; its log stays under the build directory. Project diagnostic suppressions
 must be narrowly scoped and explain why the finding is a false positive.
 It also runs `scripts/coverage.sh` with the optional tooling in
 `scripts/requirements-coverage.txt`; see the README for local setup and coverage
@@ -48,7 +51,7 @@ Keep dependency notices in `NOTICE` synchronized with dependency changes.
 
 ## Pull request checklist
 
-- [ ] `scripts/check.sh` passes: warnings-as-errors build, script and C++ tests, local protocol checks, and static analysis.
+- [ ] `scripts/check.sh` passes: warnings-as-errors build, script and C++ tests, local protocol checks, static analysis, and Trivy security scans.
 - [ ] New behavior has tests; bug fixes have a regression test.
 - [ ] Public API changes are documented in code and (if breaking) in
       `CHANGELOG.md`.

@@ -1,6 +1,6 @@
 # Architecture
 
-snaphop-agent is a local, headless C++23 runtime. `agent_cli` runs one turn and
+SnapHop Agent is a local, headless C++23 runtime. `agent_cli` runs one turn and
 prints the final answer; `agentd` processes JSONL input sequentially. Both use
 the same runtime. Only provider adapters perform implicit network requests.
 

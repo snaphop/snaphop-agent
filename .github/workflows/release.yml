@@ -25,6 +25,8 @@ jobs:
           persist-credentials: false
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 cmake libcurl4-openssl-dev python3 cppcheck
+      - name: Install pinned Trivy
+        run: scripts/install-trivy.sh
       - name: Verify
         run: scripts/check.sh
       - name: Package the runtime

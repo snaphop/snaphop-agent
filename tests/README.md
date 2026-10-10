@@ -1,7 +1,8 @@
 # Tests and fixtures
 
 Run `scripts/check.sh` from the repository root for the required local build,
-script tests, C++ tests, loopback protocol checks, and static analysis. See
+script tests, C++ tests, loopback protocol checks, static analysis, and Trivy
+security scans. See
 [local setup](../docs/host-setup.md) for prerequisites and coverage commands.
 C++ tests use Catch2 and are registered with CTest. Run a focused test by name
 using `build/agent_tests 'test name'`, or inspect names with

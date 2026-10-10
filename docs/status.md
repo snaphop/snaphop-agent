@@ -132,3 +132,31 @@ Static analysis follow-up:
 The original milestone checkmarks describe modules being present. They should
 not be read as proof that every v0 acceptance criterion is complete. Continue
 with these remaining items before calling the release finished.
+
+
+Trivy security follow-up (2026-10-10):
+
+- Added checksum-pinned Trivy 0.75.0 installation and a required security gate
+  to local verification, pull requests, master pushes and version-tag builds.
+  Weekly/manual verification refreshes advisory evidence without code changes.
+- Explicit inventories cover both CMake FetchContent pins, the optional Python
+  coverage requirement, and distro packages owning the trusted built executables'
+  dynamic-library closure. Completeness checks reject missing packages, unknown
+  owners and unsupported/EOL OS detection rather than accepting empty scans.
+- Private JSON/log reports remain under the build directory, with restrictive
+  permissions; details and secret matches are not printed or uploaded publicly.
+  License detection is informational inventory. No findings are suppressed and
+  all security severities, including unfixed findings, fail verification.
+- Local GCC Release verification passed 103 C++ tests, eight build-script tests,
+  loopback protocol checks and Cppcheck. Ten security-script/inventory tests
+  passed, including real Trivy rejection of a synthetic private-key fixture.
+- The full Trivy run scanned two C++ packages, the coverage requirement and 29
+  linked distro packages on Ubuntu 26.04. Repository/dependency and license
+  scans completed without security findings. The runtime package scan reported
+  four findings with no fixed version listed in the current advisory database;
+  therefore `scripts/check.sh` exits nonzero. Details are retained privately in
+  `<build>/security/runtime.json`, not in this public document.
+- This is a working, failing security gate rather than a clean security bill.
+  Resolve or reassess runtime findings with updated vendor advisory/package
+  evidence. CMake source scanning and a manually generated SBOM cannot prove
+  complete advisory coverage; see `docs/security-checks.md` for scope and limits.

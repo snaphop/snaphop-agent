@@ -110,9 +110,58 @@ def validate_reports(report):
     json.loads((report / "licenses.json").read_text())
 
 
+def summarize_report(path):
+    # Public diagnostics contain counts only, never identifiers, paths, keys,
+    # package names or report-controlled text. Raw evidence remains private.
+    report = json.loads(path.read_text())
+    totals = {severity: 0 for severity in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")}
+    vulnerabilities = []
+    secrets = misconfigurations = 0
+    for result in report.get("Results", []):
+        vulnerabilities.extend(result.get("Vulnerabilities", []))
+        secrets += len(result.get("Secrets", []))
+        misconfigurations += len(result.get("Misconfigurations", []))
+    for vulnerability in vulnerabilities:
+        severity = vulnerability.get("Severity", "UNKNOWN")
+        totals[severity if severity in totals else "UNKNOWN"] += 1
+    return {
+        "vulnerabilities": totals,
+        "with_listed_fix": sum(bool(v.get("FixedVersion")) for v in vulnerabilities),
+        "without_listed_fix": sum(not bool(v.get("FixedVersion")) for v in vulnerabilities),
+        "secrets": secrets,
+        "misconfigurations": misconfigurations,
+    }
+
+
+def report_blocks_verification(path):
+    report = json.loads(path.read_text())
+    if not isinstance(report, dict) or report.get("SchemaVersion") != 2:
+        raise ValueError("Missing or unsupported Trivy report schema")
+    results = report.get("Results", [])
+    if not isinstance(results, list) or any(not isinstance(result, dict) for result in results):
+        raise ValueError("Invalid Trivy report results")
+    for result in results:
+        for field in ("Vulnerabilities", "Secrets", "Misconfigurations"):
+            findings = result.get(field, [])
+            if not isinstance(findings, list) or any(not isinstance(item, dict) for item in findings):
+                raise ValueError("Invalid Trivy finding collection")
+    summary = summarize_report(path)
+    if sum(summary["vulnerabilities"].values()) or summary["secrets"] or summary["misconfigurations"]:
+        print("Trivy finding counts: " + json.dumps(summary, sort_keys=True))
+    return bool(summary["vulnerabilities"]["HIGH"] or summary["vulnerabilities"]["CRITICAL"]
+                or summary["secrets"] or summary["misconfigurations"])
+
+
 def main():
     if len(sys.argv) != 3:
         raise ValueError("Usage: security_inventory.py BUILD_DIR REPORT_DIR")
+    if sys.argv[1] == "--gate":
+        if report_blocks_verification(Path(sys.argv[2])):
+            sys.exit(1)
+        return
+    if sys.argv[1] == "--summarize":
+        print("Trivy finding counts: " + json.dumps(summarize_report(Path(sys.argv[2])), sort_keys=True))
+        return
     if sys.argv[1] == "--validate":
         validate_reports(Path(sys.argv[2]))
         return

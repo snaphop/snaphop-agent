@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 
 ### Changed
+- Retain full Trivy reports while blocking HIGH/CRITICAL vulnerabilities, all
+  secrets/misconfigurations and scanner/inventory errors; report lower-severity
+  vulnerabilities without blocking verification.
 - Standardized the product display name as SnapHop Agent.
 - Moved the canonical repository to `snaphop/snaphop-agent` on GitHub, preserving
   Gitea Git history; replaced the placeholder security contact with SnapHop's.
@@ -40,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced placeholder architecture/contribution instructions and recorded remaining v0 work.
 
 ### Fixed
+- Security scan failures now expose safe aggregate counts and distinguish missing
+  reports from finding-related failures without publishing private scan evidence.
 - Duplicated user/tool history and lost native provider tool-call data.
 - Unenforced prompt budgets, optional argument validation, and symlinked-parent escapes.
 - Cancellation/iteration-limit success reports, shell group timeout handling, and HTTP response bounds.

@@ -162,8 +162,9 @@ The installer verifies a pinned Trivy archive SHA256. Set `TRIVY=/path/to/trivy`
 to use another installation. Security scans cover authored repository files,
 optional Python requirements, pinned C++ dependencies through a generated
 CycloneDX SBOM, and distro packages owning the built executables' linked
-libraries. Vulnerability, misconfiguration and secret findings at every severity
-fail verification, including unfixed vulnerabilities. Full license scanning
+libraries. HIGH/CRITICAL vulnerabilities fail verification, including unfixed
+ones. Lower severities stay in the complete reports and sanitized finding counts.
+Secrets and misconfigurations at any severity still fail. Full license scanning
 produces an informational inventory. Scan errors and missing package coverage
 also fail; zero detected packages cannot silently pass the dependency checks.
 

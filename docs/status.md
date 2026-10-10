@@ -90,6 +90,27 @@ Remaining v0 release work:
 7. Validate provider-specific model settings against actual account access.
    All automated provider tests use local fakes; no paid provider request is
    part of this maintenance pass.
+8. Reach the requested 100% code coverage. The GCC 15.2 Debug coverage run
+   currently measures 94.1% lines (1,956/2,079) and 84.2% branches
+   (2,470/2,932), including project headers and both entry points. The CLI and
+   configuration loader have 100% line coverage. Runtime recovery and low-level
+   I/O/process failure paths remain uncovered; no project source lines are
+   excluded. Compiler-generated exception/unreachable branches are excluded
+   from branch totals. `scripts/coverage.sh` reports every gap and supports
+   explicit 100% gates; CI currently enforces 92% lines and 80% branches.
+
+Local development follow-up validation:
+
+- `scripts/check.sh`: 103 C++ tests, four build-script tests, and expanded
+  loopback provider/CLI/JSONL checks passed in Release with warnings as errors.
+- `scripts/coverage.sh`: the same 103 C++ tests and loopback checks passed in
+  Debug with GCC coverage instrumentation and atomic profile counter updates.
+- Reports are emitted as detailed HTML, Cobertura XML, and a JSON summary.
+  Counters are cleared before each run; coverage dependencies are optional
+  developer tooling and are not linked into the runtime.
+- Shared build scripts select parallel jobs from `BUILD_JOBS`, then
+  `CMAKE_BUILD_PARALLEL_LEVEL`, then the CPU count, rejecting invalid values.
+  CI caps compilation at two jobs; tests remain sequential.
 
 The original milestone checkmarks describe modules being present. They should
 not be read as proof that every v0 acceptance criterion is complete. Continue

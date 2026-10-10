@@ -11,6 +11,19 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(AGENT_ENABLE_COVERAGE "Instrument all agent sources for GCC/gcov coverage" OFF)
+if(AGENT_ENABLE_COVERAGE)
+    if(NOT BUILD_TESTING)
+        message(FATAL_ERROR "AGENT_ENABLE_COVERAGE requires BUILD_TESTING=ON")
+    endif()
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR "Coverage builds currently require GCC and its matching gcov")
+    endif()
+    add_library(agent_coverage INTERFACE)
+    target_compile_options(agent_coverage INTERFACE --coverage -O0 -g -fprofile-update=atomic)
+    target_link_options(agent_coverage INTERFACE --coverage)
+endif()
+
 # Treat warnings as errors
 add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
@@ -53,6 +66,9 @@ set(AGENT_LIB_SOURCES
 add_library(agent_lib STATIC ${AGENT_LIB_SOURCES})
 target_include_directories(agent_lib PUBLIC include)
 target_link_libraries(agent_lib PUBLIC nlohmann_json::nlohmann_json CURL::libcurl Threads::Threads)
+if(AGENT_ENABLE_COVERAGE)
+    target_link_libraries(agent_lib PUBLIC agent_coverage)
+endif()
 
 # agentd - headless JSONL runtime
 add_executable(agentd src/main_agentd.cpp)

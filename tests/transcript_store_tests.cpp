@@ -14,6 +14,52 @@ static fs::path temp_transcript() {
     return tmp;
 }
 
+TEST_CASE("TranscriptStore: missing empty and blank logs recover without compaction artifacts",
+          "[transcript]") {
+    auto path = temp_transcript();
+    agent::TranscriptStore store(path);
+    auto events = store.load_all();
+    REQUIRE(events);
+    CHECK(events->empty());
+    REQUIRE(store.compact("missing"));
+    CHECK_FALSE(fs::exists(path));
+    std::ofstream(path).close();
+    REQUIRE(store.compact("empty"));
+    CHECK(fs::file_size(path) == 0);
+    std::ofstream(path) << '\n';
+    events = store.load_recent(100);
+    REQUIRE(events);
+    CHECK(events->empty());
+    fs::remove(path);
+}
+
+TEST_CASE("TranscriptStore: filesystem failures preserve explicit errors and original data",
+          "[transcript]") {
+    auto path = temp_transcript();
+    fs::create_directory(path);
+    agent::TranscriptStore directory(path);
+    CHECK_FALSE(directory.load_recent(100));
+    CHECK_FALSE(directory.load_all());
+    CHECK_FALSE(directory.byte_size());
+    CHECK_FALSE(directory.append(agent::make_transcript_user("t", "hello")));
+    CHECK_FALSE(directory.compact("invalid"));
+    fs::remove(path);
+    std::ofstream(path) << "blocked";
+    agent::TranscriptStore blocked(path / "child/log.jsonl");
+    CHECK_FALSE(blocked.append(agent::make_transcript_user("t", "hello")));
+    fs::remove(path);
+    agent::TranscriptStore store(path);
+    REQUIRE(store.append(agent::make_transcript_user("t", "original")));
+    fs::create_directory(path.string() + ".tmp");
+    CHECK_FALSE(store.compact("replacement"));
+    auto events = store.load_all();
+    REQUIRE(events);
+    REQUIRE(events->size() == 1);
+    CHECK(events->front()["text"] == "original");
+    fs::remove(path.string() + ".tmp");
+    fs::remove(path);
+}
+
 TEST_CASE("TranscriptStore: append and load_recent", "[transcript]") {
     auto path = temp_transcript();
     agent::TranscriptStore store(path);

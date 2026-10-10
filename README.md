@@ -124,6 +124,43 @@ Run the local HTTP protocol smoke test without provider credentials:
 python3 scripts/check_protocol.py build
 ```
 
+The complete local verification command is `scripts/check.sh`. It builds with
+warnings as errors, tests build-script orchestration, runs the C++ regression
+suite, and checks both provider adapters against a loopback HTTP server. No
+provider account or API key is needed. The initial CMake configure downloads
+the pinned build dependencies; subsequent runs can use the cached sources.
+
+Build scripts run concurrent compiler jobs using `BUILD_JOBS`, then
+`CMAKE_BUILD_PARALLEL_LEVEL`, or the local CPU count by default. For example,
+`BUILD_JOBS=2 scripts/check.sh` caps compilation on a machine with limited RAM.
+Tests run sequentially because some existing fixtures share process resources.
+
+Measure coverage locally using GCC and its matching gcov:
+
+```bash
+python3 -m venv .venv-coverage
+.venv-coverage/bin/python -m pip install -r scripts/requirements-coverage.txt
+PYTHON=.venv-coverage/bin/python scripts/coverage.sh
+# For a versioned toolchain, also set CC=gcc-14 CXX=g++-14 GCOV=gcov-14.
+```
+
+Open `build-coverage/coverage/index.html` for per-line details. Cobertura XML and
+JSON summaries are in the same directory. Instrumentation includes project
+headers, both executables, and every library source; dependencies and test code
+are outside the report. Only compiler-generated exception/unreachable branches
+are omitted from branch totals. Each run clears old execution counters.
+Coverage builds use a separate Debug directory and do not affect release flags.
+
+CI runs the same local suite and publishes coverage artifacts, enforcing current
+regression floors of 92% lines and 80% branches. These floors are below the
+requested 100% target: full coverage is still outstanding. To enforce 100% and
+get a failing exit status until the remaining paths are tested, run:
+
+```bash
+COVERAGE_MIN_LINES=100 COVERAGE_MIN_BRANCHES=100 \
+  PYTHON=.venv-coverage/bin/python scripts/coverage.sh
+```
+
 Run the performance observation separately:
 
 ```bash

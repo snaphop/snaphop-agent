@@ -175,3 +175,22 @@ TEST_CASE("Prompt replay moves displaced results drops duplicates and scopes rep
     CHECK(req.messages[3].content == "Continue");
     CHECK(req.messages[5].content.find("second") != std::string::npos);
 }
+
+TEST_CASE("PromptBuilder: tool descriptions preserve required and optional parameters",
+          "[prompt]") {
+    std::vector<agent::ToolDefinition> tools{
+        {.name = "empty", .description = "No arguments", .params = {}},
+        {.name = "typed",
+         .description = "Typed arguments",
+         .params = {
+             {.name = "path", .type = "string", .required = true, .description = "Relative path"},
+             {.name = "limit",
+              .type = "integer",
+              .required = false,
+              .description = "Byte limit"}}}};
+    auto text = agent::PromptBuilder::format_tool_definitions(tools);
+    CHECK(text.find("empty") != std::string::npos);
+    CHECK(text.find("Typed arguments") != std::string::npos);
+    CHECK(text.find("path (string, required)") != std::string::npos);
+    CHECK(text.find("limit (integer)") != std::string::npos);
+}

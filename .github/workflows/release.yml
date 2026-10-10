@@ -17,6 +17,7 @@ jobs:
     env:
       CC: gcc-14
       CXX: g++-14
+      BUILD_JOBS: 2
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

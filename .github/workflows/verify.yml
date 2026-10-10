@@ -19,6 +19,7 @@ jobs:
     env:
       CC: gcc-14
       CXX: g++-14
+      BUILD_JOBS: 2
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,3 +29,34 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 cmake libcurl4-openssl-dev python3
       - name: Build and test
         run: scripts/check.sh
+
+  coverage:
+    name: Local coverage suite
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-14
+      CXX: g++-14
+      GCOV: gcov-14
+      BUILD_JOBS: 2
+      PYTHON: .venv-coverage/bin/python
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build and coverage dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14 cmake libcurl4-openssl-dev python3-venv
+          python3 -m venv .venv-coverage
+          .venv-coverage/bin/python -m pip install -r scripts/requirements-coverage.txt
+      - name: Build, test and measure all project C++ sources
+        run: scripts/coverage.sh
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: build-coverage/coverage/
+          if-no-files-found: warn
+          retention-days: 7

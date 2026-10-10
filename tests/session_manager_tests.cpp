@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <thread>
 #include <atomic>
+#include <fstream>
 
 namespace fs = std::filesystem;
 
@@ -12,6 +13,21 @@ static agent::Config test_config() {
     cfg.runtime.default_workspace = cfg.runtime.data_dir + "/workspace";
     cfg.limits.max_concurrent_sessions = 4;
     return cfg;
+}
+
+TEST_CASE("SessionManager: filesystem failures never retain a partial session", "[session]") {
+    auto cfg = test_config();
+    fs::create_directories(cfg.runtime.data_dir);
+    const auto blocked = fs::path(cfg.runtime.data_dir) / "blocked";
+    std::ofstream(blocked) << "file";
+    agent::SessionManager manager(cfg);
+    CHECK_FALSE(manager.get_or_create("s", blocked / "child"));
+    CHECK(manager.active_count() == 0);
+    cfg.runtime.data_dir = blocked.string();
+    agent::SessionManager blocked_manager(cfg);
+    CHECK_FALSE(blocked_manager.get_or_create("s"));
+    CHECK(blocked_manager.active_count() == 0);
+    fs::remove_all(blocked.parent_path());
 }
 
 TEST_CASE("SessionManager: get_or_create returns same session on second call", "[session]") {

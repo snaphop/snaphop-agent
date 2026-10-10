@@ -46,6 +46,23 @@ TEST_CASE("Model clients: missing model is an explicit error without network", "
     CHECK(anthropic->complete(req, {}).finish_reason == agent::FinishReason::Error);
 }
 
+TEST_CASE("Model clients: cancellation and missing credentials avoid transport", "[model]") {
+    agent::ModelRequest req;
+    req.model = "local";
+    std::stop_source stop;
+    stop.request_stop();
+    for (auto factory : {agent::make_openai_client, agent::make_anthropic_client}) {
+        auto client = factory();
+        CHECK(client->complete(req, stop.get_token()).finish_reason ==
+              agent::FinishReason::Cancelled);
+        CHECK(client->complete(req, {}).finish_reason == agent::FinishReason::Error);
+        req.api_key = "fake-key";
+        req.endpoint = "unsupported-scheme://local";
+        CHECK(client->complete(req, {}).finish_reason == agent::FinishReason::Error);
+        req.api_key.clear();
+    }
+}
+
 TEST_CASE("Provider adapters project identical canonical schemas with declared element types",
           "[model]") {
     agent::ModelRequest req;

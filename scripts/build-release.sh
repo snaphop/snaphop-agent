@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/build-common.sh
 
 : "${VERSION:?Set VERSION to a vX.Y.Z release tag}"
 if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -13,7 +14,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
 fi
 
 cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-cmake --build build-release --parallel "${BUILD_JOBS:-2}"
+cmake --build build-release --parallel "$build_jobs"
 python3 scripts/check_protocol.py build-release
 
 package="snaphop-agent-${VERSION}-linux-x86_64"

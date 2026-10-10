@@ -9,6 +9,24 @@ namespace agent {
 std::unique_ptr<ITool> make_shell_tool();
 }
 
+TEST_CASE("ShellTool: direct malformed arguments fail without executing", "[shell]") {
+    auto tool = agent::make_shell_tool();
+    CHECK(tool->definition().dangerous);
+    agent::ToolContext ctx{.workspace = fs::temp_directory_path()};
+    for (const auto& args : {agent::JsonValue{{"command", ""}},
+                             agent::JsonValue{{"command", "echo"}, {"timeout_seconds", 0}},
+                             agent::JsonValue{{"command", "echo"}, {"args", {1}}},
+                             agent::JsonValue{{"command", std::string("echo\0evil", 9)}}})
+        CHECK_FALSE(tool->call({"invalid", "shell", args}, ctx).ok);
+    auto result =
+        tool->call({"valid", "shell", {{"command", "true"}, {"timeout_seconds", 1}}}, ctx);
+    CHECK(result.ok);
+    result =
+        tool->call({"missing", "shell", {{"command", "/nonexistent-agent-test-command"}}}, ctx);
+    CHECK_FALSE(result.ok);
+    CHECK(result.content["exit_code"] == 127);
+}
+
 static fs::path make_workspace() {
     auto ws = fs::temp_directory_path() / ("shell_ws_" + std::to_string(getpid()));
     fs::create_directories(ws);

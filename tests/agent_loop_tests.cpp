@@ -96,6 +96,16 @@ TEST_CASE("AgentRuntime: simple no-tool turn", "[runtime]") {
     fs::remove_all(data_dir);
 }
 
+TEST_CASE("AgentRuntime: invalid inputs never reach the model", "[runtime]") {
+    const auto data_dir = "/tmp/agent_invalid_turn_" + std::to_string(getpid());
+    auto [runtime, mock] = make_test_runtime(data_dir);
+    CHECK_FALSE(runtime->run_turn({"", "hello", ""}));
+    CHECK_FALSE(runtime->run_turn({"s", "", ""}));
+    CHECK_FALSE(runtime->run_turn({"../outside", "hello", ""}));
+    CHECK(mock->requests.empty());
+    fs::remove_all(data_dir);
+}
+
 TEST_CASE("AgentRuntime: turn with one tool call", "[runtime]") {
     std::string data_dir = "/tmp/agent_test_tool_" + std::to_string(getpid());
     auto [runtime, mock] = make_test_runtime(data_dir);

@@ -17,6 +17,7 @@ class ListDirTool : public ITool {
                         .required = false,
                         .description = "Workspace-relative directory path (default: '.')"}},
             .dangerous = false,
+            .read_only = true,
         };
     }
 

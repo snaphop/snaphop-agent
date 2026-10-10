@@ -37,6 +37,40 @@ Validation on Linux with GCC 15.2:
 - CLI `--help` startup: median 6.21 ms over ten runs. This measures process
   startup/help, not a model turn, and does not establish first-load disk latency.
 
+Tool-calling follow-up (OpenClaw checkout `654c8599da7`, 2026-10-10):
+
+- Paginated UTF-8 file reads reserve serialized JSON costs and expose source-byte
+  continuation offsets. Redaction cannot silently invalidate a cursor.
+- Tool result budgeting retains useful text, metadata, and command diagnostics;
+  shell capture keeps a bounded head and tail. Prompt-pressure trimming preserves
+  native call/result pairing and persisted evidence.
+- A 32-record turn-local progress guard warns on stalled repetition and stops
+  continued repeats. Independent limits cap total calls at 128, response batches
+  at 32, and model iterations at 16.
+- Cached definitions and canonical schemas validate unknown arguments, numeric
+  bounds, and array elements. Tool registration freezes before preparation.
+  Stable context loads once per turn and messages extend incrementally.
+- Read-only batches share lazy, bounded workers and a 32-job queue. Mixed or
+  rejected batches stay sequential; results persist in model call order and
+  active work settles before turn state is released.
+- Interrupted replay preserves completed effects, marks missing outcomes as
+  unknown, and never reruns tools. Local execution IDs are unique while separate
+  provider IDs retain native wire correlation, including repeated provider IDs.
+
+Follow-up validation:
+
+- Release and AddressSanitizer/UndefinedBehaviorSanitizer with leak detection:
+  85 tests passed in each build (6,658 assertions).
+- Local HTTP checks for both providers passed in Release, sanitizer, and
+  `BUILD_TESTING=OFF` runtime builds. Checks include parallel native tool batches,
+  persisted replay in a fresh CLI process, schema stability, and malformed JSONL.
+- Release observations with 4 KiB prompts: 1,000 no-tool turns averaged 0.45 ms
+  with no observed RSS growth after warmup. Two-tool echo turns averaged 0.89 ms
+  sequentially and 0.94 ms with four workers; warmup-to-final RSS growth was zero
+  and 8 KiB, respectively. Echo measures scheduling overhead for cheap tools;
+  independent work with appreciable latency is the target for parallelism.
+  These observations exclude live providers and are not hard performance gates.
+
 Remaining v0 release work:
 
 1. Add true SSE streaming and wire daemon signal handling to active-turn

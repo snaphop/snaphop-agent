@@ -1,5 +1,6 @@
 #include "agent/agent_runtime.hpp"
 #include "agent/event.hpp"
+#include "agent/tool_result_budget.hpp"
 #include <atomic>
 #include <sstream>
 #include <iomanip>
@@ -11,6 +12,8 @@
 #include <condition_variable>
 #include <memory_resource>
 #include <array>
+#include <unordered_set>
+#include <algorithm>
 
 namespace agent {
 
@@ -25,7 +28,17 @@ AgentRuntime::AgentRuntime(Config cfg, std::unique_ptr<IModelClient> model_clien
                            std::unique_ptr<ToolRegistry> tools, std::unique_ptr<ToolPolicy> policy,
                            std::unique_ptr<MemoryManager> memory)
     : cfg_(std::move(cfg)), sessions_(cfg_), prompt_builder_(cfg_), memory_(std::move(memory)),
-      model_client_(std::move(model_client)), tools_(std::move(tools)), policy_(std::move(policy)) {
+      model_client_(std::move(model_client)), tools_(std::move(tools)), policy_(std::move(policy)),
+      tool_executor_(cfg_.limits.max_parallel_tools) {
+    tools_->freeze();
+    for (auto& definition : tools_->definitions()) {
+        if (policy_->is_allowed(definition))
+            allowed_tools_.push_back(std::move(definition));
+    }
+    std::sort(allowed_tools_.begin(), allowed_tools_.end(),
+              [](const auto& a, const auto& b) { return a.name < b.name; });
+    for (const auto& definition : allowed_tools_)
+        allowed_tool_schemas_.push_back(tool_input_schema(definition));
     if (!memory_)
         memory_ = std::make_unique<MemoryManager>(cfg_.runtime.data_dir);
 }
@@ -65,13 +78,6 @@ void AgentRuntime::emit(const JsonValue& event) const {
     emit_event(safe);
 }
 
-static std::string utf8_prefix(std::string_view text, size_t limit) {
-    size_t end = std::min(text.size(), limit);
-    while (end < text.size() && end > 0 && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80)
-        --end;
-    return std::string(text.substr(0, end));
-}
-
 static std::string make_random_id(std::string_view prefix) {
     static std::atomic<uint64_t> counter{0};
     auto now = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -92,29 +98,11 @@ std::string AgentRuntime::generate_call_id() const {
 std::expected<bool, RuntimeError>
 AgentRuntime::model_iteration(SessionState& session, const std::string& turn_id,
                               std::pmr::vector<JsonValue>& transcript_scratch,
-                              std::string& final_text_out, int& tool_call_count,
+                              std::string& final_text_out, int& tool_call_count, ModelRequest& req,
+                              const PromptBuilderOptions& opts, ToolLoopGuard& loop_guard,
                               std::stop_token stop) {
-    // Persisted history is loaded once per turn; append events to this bounded turn buffer.
-    std::string memory_summary;
-    auto summary = memory_->load_summary(session.session_id);
-    if (!summary)
-        return std::unexpected(RuntimeError{"Failed to load memory summary"});
-    if (summary->has_value())
-        memory_summary = **summary;
-
-    // Get tool definitions that pass policy.
-    auto all_defs = tools_->definitions();
-    std::vector<ToolDefinition> allowed_defs;
-    for (const auto& def : all_defs) {
-        if (policy_->is_allowed(def))
-            allowed_defs.push_back(def);
-    }
-
-    PromptBuilderOptions opts;
-    opts.max_prompt_bytes = cfg_.limits.max_prompt_bytes;
-    opts.memory_summary = memory_summary;
-
-    auto req = prompt_builder_.build(transcript_scratch, {}, allowed_defs, opts);
+    if (tool_call_count > 0)
+        prompt_builder_.fit(req, opts);
 
     // Call the model.
     auto delta_cb = [&](std::string_view chunk) -> bool {
@@ -137,87 +125,152 @@ AgentRuntime::model_iteration(SessionState& session, const std::string& turn_id,
     if (!resp.tool_calls.empty()) {
         if (resp.tool_calls.size() > 32)
             return std::unexpected(RuntimeError{"Too many tool calls in one model response"});
-        auto asst_evt = make_transcript_assistant(turn_id, resp.text);
-        auto saved = session.transcript.append(asst_evt);
-        if (!saved)
-            return std::unexpected(RuntimeError{"Transcript append failed"});
-        transcript_scratch.push_back(asst_evt);
-
-        for (const auto& mtc : resp.tool_calls) {
-            ToolCall tc{
-                .call_id = mtc.call_id.empty() ? generate_call_id() : mtc.call_id,
-                .name = mtc.name,
-                .arguments = mtc.arguments,
-            };
-
-            if (stop.stop_requested())
-                return std::unexpected(RuntimeError{"Turn cancelled", true});
-            emit(make_tool_start(tc.name, tc.call_id));
-
-            // Persist tool call in transcript.
-            auto tc_evt = make_transcript_tool_call(turn_id, tc.call_id, tc.name, tc.arguments);
-            redact_json(tc_evt, cfg_);
-            if (!session.transcript.append(tc_evt))
-                return std::unexpected(RuntimeError{"Transcript append failed"});
-            transcript_scratch.push_back(tc_evt);
-
-            // Policy check.
-            ITool* tool = tools_->find(tc.name);
-            ToolDefinition def_for_policy;
-            if (tool)
-                def_for_policy = tool->definition();
-            else
-                def_for_policy = {
-                    .name = tc.name, .description = "", .params = {}, .dangerous = false};
-
-            auto policy_result = policy_->check(def_for_policy);
-
-            ToolResult result;
-            if (!policy_result) {
-                result = {.call_id = tc.call_id,
-                          .ok = false,
-                          .content = nullptr,
-                          .error = policy_result.error().reason};
-            } else {
-                ToolContext ctx{
-                    .workspace = session.workspace,
-                    .limits = &cfg_.limits,
-                    .stop = stop,
-                    .allow_overwrite = cfg_.tools.allow_overwrite,
-                };
-                auto exec = tools_->execute(tc, ctx);
-                if (exec) {
-                    result = std::move(*exec);
-                } else {
-                    result = {.call_id = tc.call_id,
-                              .ok = false,
-                              .content = nullptr,
-                              .error = exec.error()};
-                }
+        if (static_cast<size_t>(tool_call_count) + resp.tool_calls.size() >
+            ToolLoopGuard::max_calls)
+            return std::unexpected(RuntimeError{"Total tool call limit exceeded"});
+        // Reject duplicate provider IDs atomically before any call in the batch executes.
+        std::unordered_set<std::string> ids;
+        for (const auto& call : resp.tool_calls) {
+            if (!call.call_id.empty() && !ids.insert(call.call_id).second)
+                return std::unexpected(RuntimeError{"Duplicate tool call ID in model response"});
+        }
+        std::vector<ToolCall> calls;
+        calls.reserve(resp.tool_calls.size());
+        for (auto& call : resp.tool_calls) {
+            if (call.call_id.empty()) {
+                do {
+                    call.call_id = generate_call_id();
+                } while (!ids.insert(call.call_id).second);
             }
-
+            calls.push_back({generate_call_id(), call.name, std::move(call.arguments)});
+        }
+        auto asst_evt = make_transcript_assistant(turn_id, resp.text);
+        if (!session.transcript.append(asst_evt))
+            return std::unexpected(RuntimeError{"Transcript append failed"});
+        transcript_scratch.push_back(std::move(asst_evt));
+        Message assistant{"assistant", resp.text, "", ""};
+        std::vector<std::optional<PreparedToolCall>> prepared(calls.size());
+        std::vector<std::optional<ToolResult>> results(calls.size());
+        bool parallel = calls.size() > 1 && tool_executor_.worker_count() > 1;
+        for (size_t i = 0; i < calls.size(); ++i) {
+            const auto& call = calls[i];
+            auto event =
+                make_transcript_tool_call(turn_id, call.call_id, call.name, call.arguments);
+            event["provider_call_id"] = resp.tool_calls[i].call_id;
+            redact_json(event, cfg_);
+            if (!session.transcript.append(event))
+                return std::unexpected(RuntimeError{"Transcript append failed"});
+            assistant.tool_calls.push_back(
+                {resp.tool_calls[i].call_id, call.name, event["arguments"]});
+            transcript_scratch.push_back(std::move(event));
+            const auto* def = tools_->definition(call.name);
+            std::string rejection;
+            if (!def) {
+                rejection = "Unknown tool: " + call.name;
+            } else if (auto decision = policy_->check(*def); !decision) {
+                rejection = decision.error().reason;
+            } else {
+                auto validated = tools_->prepare(call);
+                if (validated)
+                    prepared[i] = std::move(*validated);
+                else
+                    rejection = validated.error();
+            }
+            if (!rejection.empty())
+                results[i] = ToolResult{call.call_id, false, nullptr, std::move(rejection)};
+            parallel &= prepared[i].has_value() && prepared[i]->read_only();
+        }
+        req.messages.push_back(std::move(assistant));
+        const ToolContext context{session.workspace, &cfg_.limits, stop,
+                                  cfg_.tools.allow_overwrite};
+        auto execute = [&](size_t index) {
+            if (!prepared[index])
+                return;
+            // Policy is immutable after runtime construction; path access remains tool-owned
+            // and is checked at the effect, after preparation and any queue wait.
+            auto executed = tools_->execute(*prepared[index], context);
+            results[index] =
+                executed ? std::move(*executed)
+                         : ToolResult{calls[index].call_id, false, nullptr, executed.error()};
+        };
+        bool stalled = false;
+        auto finish = [&](size_t index) -> std::expected<void, RuntimeError> {
+            auto& result = *results[index];
+            const auto& call = calls[index];
+            const auto decision = loop_guard.observe(
+                call, result, prepared[index].has_value() && prepared[index]->read_only());
+            if (decision == ToolLoopGuard::Decision::Warn)
+                result.error +=
+                    " [loop warning: repeated unchanged outcome; choose a different action]";
+            stalled |= decision == ToolLoopGuard::Decision::Stop;
             redact_json(result.content, cfg_);
             result.error = redact(std::move(result.error), cfg_);
-            // Truncate tool result content if too large.
-            std::string content_str = to_json_string(result.content);
-            if (content_str.size() > cfg_.limits.max_tool_result_bytes) {
-                result.content = "[tool result truncated]";
-                if (to_json_string(result.content).size() > cfg_.limits.max_tool_result_bytes)
-                    result.content = 0;
+            if (call.name == "read_file" && result.content.is_object() &&
+                result.content.contains("next_offset") &&
+                to_json_string(result.content).size() > cfg_.limits.max_tool_result_bytes) {
+                result.ok = false;
+                result.content = nullptr;
+                result.error =
+                    "Read page exceeds budget after redaction; retry with a smaller limit";
             }
-
-            emit(make_tool_end(tc.name, tc.call_id, result.ok, result.error));
-
-            // Persist tool result.
-            auto tr_evt = make_transcript_tool_result(turn_id, tc.call_id, result.ok,
-                                                      result.content, result.error);
-            redact_json(tr_evt, cfg_);
-            if (!session.transcript.append(tr_evt))
+            result.content =
+                bound_tool_content(std::move(result.content), cfg_.limits.max_tool_result_bytes);
+            auto event = make_transcript_tool_result(turn_id, call.call_id, result.ok,
+                                                     result.content, result.error);
+            event["provider_call_id"] = redact(resp.tool_calls[index].call_id, cfg_);
+            // Redaction runs before sizing; avoid a second pass changing bounded output.
+            if (!session.transcript.append(event))
                 return std::unexpected(RuntimeError{"Transcript append failed"});
-            transcript_scratch.push_back(tr_evt);
-
-            tool_call_count++;
+            transcript_scratch.push_back(std::move(event));
+            req.messages.push_back(
+                {"tool",
+                 to_json_string(JsonValue{
+                     {"ok", result.ok}, {"content", result.content}, {"error", result.error}}),
+                 resp.tool_calls[index].call_id,
+                 call.name,
+                 {},
+                 !result.ok});
+            emit(make_tool_end(call.name, call.call_id, result.ok, result.error));
+            ++tool_call_count;
+            return {};
+        };
+        // If submission or persistence fails, settle every started worker before turn-local
+        // arguments/results/context go out of scope. Futures from packaged_task don't join.
+        struct Pending {
+            std::vector<std::future<void>> tasks;
+            ~Pending() {
+                for (auto& task : tasks)
+                    if (task.valid())
+                        task.wait();
+            }
+        } pending;
+        pending.tasks.reserve(calls.size());
+        if (parallel) {
+            for (size_t i = 0; i < calls.size(); ++i) {
+                emit(make_tool_start(calls[i].name, calls[i].call_id));
+                pending.tasks.push_back(tool_executor_.submit([&, i] { execute(i); }));
+            }
         }
+        for (size_t i = 0; i < calls.size(); ++i) {
+            if (parallel) {
+                pending.tasks[i].get();
+            } else {
+                emit(make_tool_start(calls[i].name, calls[i].call_id));
+                if (stalled)
+                    results[i] = ToolResult{calls[i].call_id, false, nullptr,
+                                            "Tool skipped after loop detection"};
+                else
+                    execute(i);
+            }
+            auto saved = finish(i);
+            if (!saved)
+                return std::unexpected(saved.error());
+        }
+        if (stop.stop_requested())
+            return std::unexpected(RuntimeError{"Turn cancelled", true});
+        if (stalled)
+            return std::unexpected(
+                RuntimeError{"Tool loop stopped after repeated unchanged outcomes"});
 
         // Model needs to continue after tool results.
         return true;
@@ -361,11 +414,21 @@ std::expected<TurnOutput, RuntimeError> AgentRuntime::run_turn(const TurnInput& 
     int tool_call_count = 0;
     bool finished = false;
     try {
+        auto summary = memory_->load_summary(session.session_id);
+        if (!summary)
+            return fail({"Failed to load memory summary"});
+        PromptBuilderOptions options;
+        options.max_prompt_bytes = cfg_.limits.max_prompt_bytes;
+        options.prepared_tool_schemas = &allowed_tool_schemas_;
+        if (summary->has_value())
+            options.memory_summary = **summary;
+        auto request = prompt_builder_.build(turn_events, {}, allowed_tools_, options);
+        ToolLoopGuard loop_guard;
         for (int i = 0; i < 16; ++i) {
             if (stop.stop_requested())
                 return fail({"Turn cancelled or deadline exceeded", true});
-            auto result =
-                model_iteration(session, turn_id, turn_events, final_text, tool_call_count, stop);
+            auto result = model_iteration(session, turn_id, turn_events, final_text,
+                                          tool_call_count, request, options, loop_guard, stop);
             if (!result)
                 return fail(result.error());
             if (!*result) {

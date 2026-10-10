@@ -30,6 +30,8 @@ struct ModelRequest {
     std::string system_prompt;
     std::vector<Message> messages;
     std::vector<ToolDefinition> tools;
+    // Immutable canonical schemas prepared once per turn; adapters own projection.
+    JsonValue tool_schemas = JsonValue::array();
     std::string model;
     float temperature = 0.0f;
     size_t max_output_tokens = 4096;

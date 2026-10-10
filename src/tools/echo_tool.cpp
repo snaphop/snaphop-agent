@@ -3,16 +3,17 @@
 namespace agent {
 
 class EchoTool : public ITool {
-public:
+  public:
     ToolDefinition definition() const override {
         return {
             .name = "echo",
             .description = "Return the input text unchanged. Useful for testing.",
-            .params = {
-                {.name = "text", .type = "string", .required = true,
-                 .description = "Text to echo back"}
-            },
+            .params = {{.name = "text",
+                        .type = "string",
+                        .required = true,
+                        .description = "Text to echo back"}},
             .dangerous = false,
+            .read_only = true,
         };
     }
 

@@ -8,11 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Paginated UTF-8 file reads, useful bounded tool output, and stalled tool-loop detection.
+- A bounded worker pool for approved read-only tool batches, configurable with `max_parallel_tools`.
+- Interrupted tool-batch recovery with explicit unknown outcomes and unique local execution IDs.
 - Local HTTP protocol smoke tests and 1,000-turn performance observations.
 - Explicit overwrite approval policy, bounded session caching, and automatic transcript-size compaction.
 - Regression tests for provider continuations, cancellation, input validation, prompt bounds, and transcript recovery.
 
 ### Changed
+- Cache and freeze tool definitions; share canonical input schemas between validation and provider adapters.
+- Reuse stable context within a turn and trim older tool payloads under prompt pressure while preserving call/result pairing.
+- Reject undeclared tool arguments and duplicate provider call IDs within a response before execution.
 - Updated pinned dependencies to nlohmann/json 3.12.0 and Catch2 3.16.1.
 - Test dependencies are optional with `BUILD_TESTING=OFF`.
 - Require an explicit model ID; removed the stale implicit Anthropic model fallback.

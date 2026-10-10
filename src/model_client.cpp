@@ -50,23 +50,10 @@ JsonValue anthropic_request_body(const ModelRequest& req) {
             JsonValue tj;
             tj["name"] = t.name;
             tj["description"] = t.description;
-            JsonValue input_schema;
-            input_schema["type"] = "object";
-            JsonValue props = JsonValue::object();
-            JsonValue required_arr = JsonValue::array();
-            for (const auto& p : t.params) {
-                JsonValue pj;
-                pj["type"] = p.type;
-                pj["description"] = p.description;
-                if (p.type == "array")
-                    pj["items"] = {{"type", "string"}};
-                props[p.name] = std::move(pj);
-                if (p.required)
-                    required_arr.push_back(p.name);
-            }
-            input_schema["properties"] = std::move(props);
-            input_schema["required"] = std::move(required_arr);
-            tj["input_schema"] = std::move(input_schema);
+            const auto index = tools_json.size();
+            tj["input_schema"] = req.tool_schemas.size() == req.tools.size()
+                                     ? req.tool_schemas[index]
+                                     : tool_input_schema(t);
             tools_json.push_back(std::move(tj));
         }
         body["tools"] = std::move(tools_json);
@@ -115,23 +102,9 @@ JsonValue openai_request_body(const ModelRequest& req) {
             JsonValue fn;
             fn["name"] = t.name;
             fn["description"] = t.description;
-            JsonValue params_schema;
-            params_schema["type"] = "object";
-            JsonValue props = JsonValue::object();
-            JsonValue required_arr = JsonValue::array();
-            for (const auto& p : t.params) {
-                JsonValue pj;
-                pj["type"] = p.type;
-                pj["description"] = p.description;
-                if (p.type == "array")
-                    pj["items"] = {{"type", "string"}};
-                props[p.name] = std::move(pj);
-                if (p.required)
-                    required_arr.push_back(p.name);
-            }
-            params_schema["properties"] = std::move(props);
-            params_schema["required"] = std::move(required_arr);
-            fn["parameters"] = std::move(params_schema);
+            const auto index = tools_json.size();
+            fn["parameters"] = req.tool_schemas.size() == req.tools.size() ? req.tool_schemas[index]
+                                                                           : tool_input_schema(t);
             tj["function"] = std::move(fn);
             tools_json.push_back(std::move(tj));
         }

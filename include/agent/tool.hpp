@@ -1,6 +1,10 @@
 #pragma once
 
 #include "json.hpp"
+#include <cstdint>
+#include <optional>
+#include <string_view>
+#include <utility>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -17,6 +21,9 @@ struct ToolParam {
     std::string type; // "string", "boolean", "integer", "object", "array"
     bool required;
     std::string description;
+    std::string item_type = {}; // Array element type; empty means unconstrained.
+    std::optional<int64_t> minimum = {};
+    std::optional<int64_t> maximum = {};
 };
 
 struct ToolDefinition {
@@ -24,7 +31,12 @@ struct ToolDefinition {
     std::string description;
     std::vector<ToolParam> params;
     bool dangerous = false;
+    // Opt-in contract: call() is thread-safe and has no filesystem/process mutations.
+    bool read_only = false;
 };
+
+// One canonical input schema for provider projection and local validation.
+JsonValue tool_input_schema(const ToolDefinition& definition);
 
 struct ToolCall {
     std::string call_id;
@@ -64,6 +76,28 @@ class ITool {
     virtual ToolResult call(const ToolCall& tc, const ToolContext& ctx) = 0;
 };
 
+class ToolRegistry;
+
+// Immutable validated arguments. Registry/tool ownership must outlive this value.
+class PreparedToolCall {
+  public:
+    const ToolCall& call() const {
+        return call_;
+    }
+    bool read_only() const {
+        return read_only_;
+    }
+
+  private:
+    friend class ToolRegistry;
+    PreparedToolCall(const ToolRegistry* owner, ITool* tool, ToolCall call, bool read_only)
+        : owner_(owner), tool_(tool), call_(std::move(call)), read_only_(read_only) {}
+    const ToolRegistry* owner_;
+    ITool* tool_; // Non-owning; registration is frozen before preparation.
+    ToolCall call_;
+    bool read_only_;
+};
+
 // Registry of all known tools.
 class ToolRegistry {
   public:
@@ -75,6 +109,15 @@ class ToolRegistry {
 
     // Return all tool definitions (for model prompt injection).
     std::vector<ToolDefinition> definitions() const;
+
+    const ToolDefinition* definition(std::string_view name) const;
+    // Freeze registration before sharing prepared calls with workers.
+    void freeze() {
+        frozen_ = true;
+    }
+    std::expected<PreparedToolCall, std::string> prepare(ToolCall call) const;
+    std::expected<ToolResult, std::string> execute(const PreparedToolCall& call,
+                                                   const ToolContext& ctx) const;
 
     // Execute a tool call after validation. Returns error if tool not found or
     // arguments are invalid.
@@ -89,7 +132,12 @@ class ToolRegistry {
     // Validate tool call arguments against definition.
     std::expected<void, std::string> validate(const ToolCall& tc, const ToolDefinition& def) const;
 
-    std::vector<std::unique_ptr<ITool>> tools_;
+    struct Entry {
+        std::unique_ptr<ITool> tool;
+        ToolDefinition definition;
+    };
+    std::vector<Entry> tools_;
+    bool frozen_ = false;
 };
 
 } // namespace agent

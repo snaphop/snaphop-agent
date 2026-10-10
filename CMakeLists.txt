@@ -34,7 +34,10 @@ set(AGENT_LIB_SOURCES
     src/json.cpp
     src/session_manager.cpp
     src/transcript_store.cpp
+    src/tool_executor.cpp
+    src/tool_loop_guard.cpp
     src/tool.cpp
+    src/tool_result_budget.cpp
     src/tool_policy.cpp
     src/prompt_builder.cpp
     src/model_client.cpp

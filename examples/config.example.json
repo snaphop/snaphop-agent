@@ -18,7 +18,8 @@
     "max_turn_seconds": 300,
     "max_tool_seconds": 30,
     "max_concurrent_sessions": 4,
-    "max_cached_sessions": 64
+    "max_cached_sessions": 64,
+    "max_parallel_tools": 4
   },
   "tools": {
     "allow": ["echo", "list_dir", "read_file", "write_file"],

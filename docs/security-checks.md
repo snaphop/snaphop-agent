@@ -28,10 +28,13 @@ failures fail verification rather than produce a successful offline result.
 | Runtime packages | `ldd` resolves the trusted built `agent_cli` and `agentd` executables' library closure. `dpkg-query` supplies owner/version/source metadata. Only these package records and distro release metadata are staged for an OS vulnerability scan, including libcurl and linked TLS libraries. |
 | Licenses | Full source/text license detection plus declared C++ licenses in the SBOM. Informational inventory; permitted licenses do not fail a security check merely for being detected. Review usage and notices manually. |
 
-Vulnerability, secret and misconfiguration scans include UNKNOWN, LOW, MEDIUM,
-HIGH and CRITICAL findings and fail on any finding. Unfixed vulnerabilities are
-not ignored. Missing tools, inventory failures, scanner errors, missing reports,
-unsupported/EOL OS detection and omitted inventoried packages also fail.
+All scans include UNKNOWN, LOW, MEDIUM, HIGH and CRITICAL findings. The full JSON
+reports are evaluated separately from scanner execution: HIGH/CRITICAL
+vulnerabilities block even when no fix is listed. UNKNOWN/LOW/MEDIUM
+vulnerabilities remain in reports and sanitized aggregate counts without blocking.
+Secrets and misconfigurations block at every severity. No unfixed vulnerabilities
+are hidden. Missing tools, inventory failures, scanner errors, malformed/missing
+reports, unsupported/EOL OS detection and omitted inventoried packages also fail.
 Every scan is attempted after inventory succeeds, even when an earlier scan
 finds an issue. The check does not read `.trivyignore`; suppressions must not be
 added to hide unresolved findings. Tests include real synthetic-secret detection
@@ -48,9 +51,11 @@ inventories rather than scanning all downloaded third-party source trees.
 Reports live under `<build>/security/`, with directory mode 0700 and new files
 mode 0600. Each run discards old scan JSON before scanning. They include
 `repository.json`, `dependencies.json`, `runtime.json`, `licenses.json`, per-scan
-logs, the C++ SBOM and the staged runtime package inventory. The script prints
-only scanner version and generic scan status; it does not print matches or
-vulnerability details. CI does not upload raw security artifacts to this public
+logs, the C++ SBOM and the staged runtime package inventory. The script prints scanner version and generic scan status. Failed scans also
+print aggregate severity counts, fix-availability counts, and counts of secrets
+and misconfigurations. Summaries contain no package names, advisory IDs, paths,
+secret matches or report-controlled text. A missing/invalid report is identified
+as an operational diagnostic gap, with raw details left in the private log. CI does not upload raw security artifacts to this public
 repository. Investigate CI failures locally on the same distro/toolchain.
 
 Follow [SECURITY.md](../SECURITY.md): report suspected vulnerabilities privately

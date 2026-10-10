@@ -35,8 +35,11 @@ Full local checks also require Python 3, Cppcheck 2.13+, and Trivy 0.75.0.
 Install the checksum-pinned scanner with `scripts/install-trivy.sh`. Security
 checks inventory CMake pins and linked Debian/Ubuntu runtime packages, and run
 repository vulnerability, secret, misconfiguration, and full license scans.
-All security severities gate verification, including unfixed findings. License
-entries are informational inventory. Do not suppress findings to make a gate pass.
+Scan and retain every severity. HIGH/CRITICAL vulnerabilities block verification,
+including unfixed findings; UNKNOWN/LOW/MEDIUM vulnerabilities remain visible
+in private reports and sanitized counts. Secrets and misconfigurations block
+at every severity. Scanner errors, invalid reports and incomplete inventories
+also block. License entries are informational inventory. Do not suppress findings to make a gate pass.
 Private reports are under `<build>/security/`; never upload them to public
 issues, PRs, logs, or artifacts. Follow `SECURITY.md` for suspected vulnerabilities.
 

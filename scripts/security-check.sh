@@ -19,7 +19,7 @@ chmod 700 "$report_dir"
 rm -f "$report_dir/repository.json" "$report_dir/dependencies.json" \
     "$report_dir/runtime.json" "$report_dir/licenses.json"
 "${SECURITY_PYTHON:-python3}" scripts/security_inventory.py "$build_dir" "$report_dir"
-common=(--cache-dir "$report_dir/cache" --timeout 10m --format json --exit-code 1 \
+common=(--cache-dir "$report_dir/cache" --timeout 10m --format json --exit-code 0 \
     --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignorefile /dev/null \
     --skip-version-check)
 # Exclude generated outputs and operator state, including custom build directories.
@@ -33,10 +33,26 @@ scan() {
     shift
     if "$trivy" "$@" --output "$report_dir/$report.json" \
         > "$report_dir/$report.log" 2>&1; then
-        echo "Trivy $report scan passed."
+        # Capture every severity; apply the blocking policy to the complete JSON.
+        # A scanner error is never treated as an advisory-only finding.
+        if "${SECURITY_PYTHON:-python3}" scripts/security_inventory.py \
+            --gate "$report_dir/$report.json"; then
+            echo "Trivy $report scan passed the security gate."
+        else
+            echo "Trivy $report blocked verification; inspect private reports under $report_dir." >&2
+            status=1
+        fi
     else
         echo "Trivy $report scan failed; inspect private reports under $report_dir." >&2
         status=1
+        if [[ -s "$report_dir/$report.json" ]]; then
+            if ! "${SECURITY_PYTHON:-python3}" scripts/security_inventory.py \
+                --summarize "$report_dir/$report.json"; then
+                echo "Trivy report is invalid; inspect the private scanner log." >&2
+            fi
+        else
+            echo "Trivy produced no report; inspect the private scanner log for an operational error." >&2
+        fi
     fi
 }
 scan repository fs "${common[@]}" --scanners vuln,misconfig,secret \
@@ -45,7 +61,7 @@ scan dependencies sbom "${common[@]}" --scanners vuln "$report_dir/dependencies.
 scan runtime rootfs "${common[@]}" --scanners vuln "$report_dir/runtime-rootfs"
 # Permissive licenses are inventory entries, not security failures. Retain the
 # complete license report for review without imposing a new licensing policy.
-scan licenses fs "${common[@]}" --exit-code 0 --scanners license --license-full "${skip[@]}" .
+scan licenses fs "${common[@]}" --scanners license --license-full "${skip[@]}" .
 if ! "${SECURITY_PYTHON:-python3}" scripts/security_inventory.py --validate "$report_dir"; then
     status=1
 fi

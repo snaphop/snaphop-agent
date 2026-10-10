@@ -146,7 +146,7 @@ Trivy security follow-up (2026-10-10):
 - Private JSON/log reports remain under the build directory, with restrictive
   permissions; details and secret matches are not printed or uploaded publicly.
   License detection is informational inventory. No findings are suppressed and
-  all security severities, including unfixed findings, fail verification.
+  the initial policy blocked all security severities, including unfixed findings.
 - Local GCC Release verification passed 103 C++ tests, eight build-script tests,
   loopback protocol checks and Cppcheck. Ten security-script/inventory tests
   passed, including real Trivy rejection of a synthetic private-key fixture.
@@ -154,9 +154,28 @@ Trivy security follow-up (2026-10-10):
   linked distro packages on Ubuntu 26.04. Repository/dependency and license
   scans completed without security findings. The runtime package scan reported
   four findings with no fixed version listed in the current advisory database;
-  therefore `scripts/check.sh` exits nonzero. Details are retained privately in
+  therefore the initial `scripts/check.sh` run exited nonzero. Details are retained privately in
   `<build>/security/runtime.json`, not in this public document.
 - This is a working, failing security gate rather than a clean security bill.
   Resolve or reassess runtime findings with updated vendor advisory/package
   evidence. CMake source scanning and a manually generated SBOM cannot prove
   complete advisory coverage; see `docs/security-checks.md` for scope and limits.
+
+
+Security policy and CI diagnostics follow-up (2026-10-10):
+
+- Full scans retain all vulnerability severities. HIGH/CRITICAL vulnerabilities
+  remain blocking with or without a listed fix; lower severities are reported
+  without blocking. Secrets, misconfigurations, scanner failures, malformed
+  reports, unsupported OS detection and missing inventory coverage still block.
+- Safe aggregate diagnostics expose severity counts and fix availability without
+  publishing package names, advisory IDs, paths or secret matches. Missing
+  scanner reports are distinguished from policy findings.
+- An isolated Ubuntu 24.04 comparison with current distro packages still reported
+  three medium runtime-package findings with no listed fixes. The local Ubuntu
+  26.04 scan reports four medium findings. These findings remain unresolved and
+  retained; the policy change does not claim remediation.
+- Updated local `scripts/check.sh` passed: 103 C++ tests, eight build-script tests,
+  15 security/inventory/policy tests, protocol checks, Cppcheck and all Trivy gates.
+  Regressions verify that unfixed HIGH/CRITICAL findings and every secret still
+  block, malformed reports fail, and lower findings remain in complete reports.

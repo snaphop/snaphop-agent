@@ -69,6 +69,63 @@ class SecurityInventory(unittest.TestCase):
             (root / 'licenses.json').write_text('{}')
             inventory.validate_reports(root)
 
+    def test_public_summary_contains_only_aggregates_not_private_finding_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'report.json'
+            report.write_text(json.dumps({'Results': [{
+                'Target': 'PRIVATE-PATH',
+                'Vulnerabilities': [
+                    {'Severity': 'MEDIUM', 'VulnerabilityID': 'PRIVATE-ID', 'FixedVersion': ''},
+                    {'Severity': 'HIGH', 'PkgName': 'PRIVATE-PACKAGE', 'FixedVersion': '1.2'},
+                    {'Severity': 'UNTRUSTED-TEXT', 'Description': 'PRIVATE-DESCRIPTION'}],
+                'Secrets': [{'Match': 'PRIVATE-SECRET'}],
+                'Misconfigurations': [{'Message': 'PRIVATE-CONFIG'}]}]}))
+            summary = inventory.summarize_report(report)
+            self.assertEqual(summary['vulnerabilities'],
+                             {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 1, 'LOW': 0, 'UNKNOWN': 1})
+            self.assertEqual(summary['with_listed_fix'], 1)
+            self.assertEqual(summary['without_listed_fix'], 2)
+            self.assertEqual(summary['secrets'], 1)
+            self.assertEqual(summary['misconfigurations'], 1)
+            self.assertNotIn('PRIVATE', json.dumps(summary))
+            self.assertNotIn('UNTRUSTED-TEXT', json.dumps(summary))
+
+    def test_gate_reports_lower_severities_and_blocks_high_critical_even_without_fixes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'report.json'
+            for severity, blocked in [('UNKNOWN', False), ('LOW', False), ('MEDIUM', False),
+                                      ('HIGH', True), ('CRITICAL', True)]:
+                for fixed in ('', '1.2'):
+                    with self.subTest(severity=severity, fixed=fixed):
+                        path.write_text(json.dumps({'SchemaVersion': 2, 'Results': [{
+                            'Vulnerabilities': [{'Severity': severity, 'FixedVersion': fixed}]}]}))
+                        with patch('builtins.print') as output:
+                            self.assertEqual(inventory.report_blocks_verification(path), blocked)
+                        self.assertIn(severity, output.call_args.args[0])
+                        self.assertEqual(len(json.loads(path.read_text())['Results'][0]['Vulnerabilities']), 1)
+
+    def test_gate_always_blocks_secrets_and_misconfiguration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'report.json'
+            for kind in ('Secrets', 'Misconfigurations'):
+                path.write_text(json.dumps({'SchemaVersion': 2, 'Results': [{kind: [
+                    {'Severity': 'LOW', 'Match': 'PRIVATE-SECRET'}]}]}))
+                with patch('builtins.print') as output:
+                    self.assertTrue(inventory.report_blocks_verification(path))
+                self.assertNotIn('PRIVATE-SECRET', output.call_args.args[0])
+
+    def test_gate_rejects_missing_malformed_or_unsupported_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'report.json'
+            with self.assertRaises(OSError):
+                inventory.report_blocks_verification(path)
+            for report in ('broken JSON', '{}', '[]', '{"SchemaVersion": 2, "Results": {}}',
+                           '{"SchemaVersion": 99}',
+                           '{"SchemaVersion": 2, "Results": [{"Secrets": "not-a-list"}]}'):
+                path.write_text(report)
+                with self.subTest(report=report), self.assertRaises(ValueError):
+                    inventory.report_blocks_verification(path)
+
     def test_unowned_runtime_library_fails_instead_of_disappearing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -114,7 +171,7 @@ class SecurityScripts(unittest.TestCase):
                         "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                         "if '--output' in sys.argv:\n"
                         "    Path(sys.argv[sys.argv.index('--output')+1]).write_text('{}')\n"
-                        "if os.environ.get('FAIL_SCAN') == sys.argv[1]: sys.exit(7)\n")
+                        "if os.environ.get('FAIL_SCAN') == sys.argv[1] and (not os.environ.get('FAIL_ARGUMENT') or os.environ['FAIL_ARGUMENT'] in sys.argv): sys.exit(7)\n")
         tool.chmod(0o755)
         self.env = dict(os.environ, TRIVY=str(tool), SECURITY_PYTHON=str(tool),
                         COMMAND_LOG=str(self.log))
@@ -129,14 +186,16 @@ class SecurityScripts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()]
         self.assertEqual([c[0] for c in calls],
-                         ["--version", "scripts/security_inventory.py", "fs", "sbom", "rootfs", "fs",
-                          "scripts/security_inventory.py"])
+                         ["--version", "scripts/security_inventory.py", "fs", "scripts/security_inventory.py",
+                          "sbom", "scripts/security_inventory.py", "rootfs", "scripts/security_inventory.py",
+                          "fs", "scripts/security_inventory.py", "scripts/security_inventory.py"])
         self.assertEqual(calls[2][calls[2].index('--scanners')+1], 'vuln,misconfig,secret')
-        for call in calls[2:5]:
+        for call in [calls[2], calls[4], calls[6]]:
             self.assertIn('UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', call)
-            self.assertEqual(call[call.index('--exit-code')+1], '1')
+            self.assertEqual(call[call.index('--exit-code')+1], '0')
             self.assertNotIn('--ignore-unfixed', call)
-        self.assertIn('--license-full', calls[-2])
+        self.assertIn('--license-full', calls[-3])
+        self.assertEqual(sum('--gate' in call for call in calls), 4)
         self.assertEqual(calls[-1][1], '--validate')
         self.assertIn('pip:requirements-.*\\.txt', calls[2])
         reports = self.path / 'build with spaces/security'
@@ -147,6 +206,14 @@ class SecurityScripts(unittest.TestCase):
         result = self.run_scan(FAIL_SCAN='sbom')
         self.assertEqual(result.returncode, 1)
         self.assertIn('dependencies scan failed', result.stderr)
+        self.assertTrue((self.path / 'build with spaces/security/licenses.json').exists())
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertTrue(any('--summarize' in call for call in calls))
+
+    def test_a_blocking_policy_result_still_runs_every_scan(self):
+        result = self.run_scan(FAIL_SCAN='scripts/security_inventory.py', FAIL_ARGUMENT='--gate')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('blocked verification', result.stderr)
         self.assertTrue((self.path / 'build with spaces/security/licenses.json').exists())
 
     def test_missing_scanner_fails_before_inventory(self):
